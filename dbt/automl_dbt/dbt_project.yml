@@ -1,0 +1,23 @@
+name: automl_dbt
+version: '0.1.0'
+config-version: 2
+
+profile: automl_dbt
+
+model-paths: ["models"]
+seed-paths: ["seeds"]
+test-paths: ["tests"]
+macro-paths: ["macros"]
+analysis-paths: ["analyses"]
+snapshot-paths: ["snapshots"]
+
+clean-targets:
+  - target
+  - dbt_packages
+
+models:
+  automl_dbt:
+    staging:
+      +materialized: view
+    marts:
+      +materialized: table
