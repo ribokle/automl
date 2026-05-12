@@ -1,6 +1,7 @@
 "use client";
 
 import { AgentCard } from "./AgentCard";
+import { PPGTable } from "./PPGTable";
 import { useRunEvents } from "@/lib/sse";
 import { AGENT_ORDER, type AgentName, type AgentStatus } from "@/lib/types";
 
@@ -22,6 +23,7 @@ export function RunTimeline({ runId }: Props) {
     const evts = byAgent.get(agent) ?? [];
     for (let i = evts.length - 1; i >= 0; i--) {
       const e = evts[i];
+      if (e.type === "approval_required") return "awaiting_approval";
       if (e.type === "agent_finished") return (e.status as AgentStatus) ?? "done";
       if (e.type === "agent_failed") return "failed";
       if (e.type === "agent_started") return "running";
@@ -40,6 +42,7 @@ export function RunTimeline({ runId }: Props) {
           events={byAgent.get(agent) ?? []}
         />
       ))}
+      <PPGTable runId={runId} events={events} />
     </div>
   );
 }
