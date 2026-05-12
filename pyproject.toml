@@ -1,0 +1,61 @@
+[project]
+name = "automl"
+version = "0.1.0"
+description = "Agentic price & promo optimization platform"
+requires-python = ">=3.11"
+dependencies = [
+    "anthropic>=0.40.0",
+    "pydantic>=2.7",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "sse-starlette>=2.1",
+    "sqlmodel>=0.0.22",
+    "aiosqlite>=0.20",
+    "typer>=0.12",
+    "rich>=13.7",
+    "pandas>=2.2",
+    "numpy>=1.26",
+    "duckdb>=1.0",
+    "dbt-core>=1.8,<1.10",
+    "dbt-duckdb>=1.8,<1.10",
+    "great-expectations>=1.0",
+    "sqlalchemy>=2.0",
+    "duckdb-engine>=0.13",
+    "holidays>=0.55",
+    "python-multipart>=0.0.9",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.6",
+    "mypy>=1.10",
+    "httpx>=0.27",
+]
+
+[project.scripts]
+automl = "cli.run:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["api", "agents", "cli", "core", "synthetic"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

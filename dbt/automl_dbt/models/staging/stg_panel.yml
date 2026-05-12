@@ -1,0 +1,50 @@
+version: 2
+
+models:
+  - name: stg_panel
+    description: "Type-cast staging view over raw_panel."
+    columns:
+      - name: sku
+        tests: [not_null]
+      - name: week_start
+        tests: [not_null]
+      - name: store_id
+        tests: [not_null]
+      - name: region
+        tests:
+          - accepted_values:
+              values: ['EAST', 'WEST', 'CENTRAL', 'NORTH', 'SOUTH']
+              config:
+                severity: warn
+      - name: units
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0
+              strictly: false
+      - name: price
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0
+              strictly: true
+      - name: base_price
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0
+              strictly: true
+      - name: tpr_flag
+        tests:
+          - accepted_values:
+              values: [0, 1]
+      - name: display_flag
+        tests:
+          - accepted_values:
+              values: [0, 1]
+      - name: feature_flag
+        tests:
+          - accepted_values:
+              values: [0, 1]
+      - name: distribution_acv
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0
+              max_value: 100

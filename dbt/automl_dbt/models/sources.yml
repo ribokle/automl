@@ -1,0 +1,22 @@
+version: 2
+
+sources:
+  - name: raw
+    description: "Raw panel loaded from the user-provided CSV into DuckDB by core.data.io."
+    schema: main
+    tables:
+      - name: raw_panel
+        description: "Untransformed weekly SKU x store rows."
+        columns:
+          - name: sku
+            tests: [not_null]
+          - name: week_start
+            tests: [not_null]
+          - name: store_id
+            tests: [not_null]
+          - name: units
+            tests: [not_null]
+          - name: price
+            tests: [not_null]
+          - name: base_price
+            tests: [not_null]

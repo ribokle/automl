@@ -1,1 +1,39 @@
-.git
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Project
+runs/
+data/*.csv
+!data/.gitkeep
+*.duckdb
+*.duckdb.wal
+
+# dbt
+dbt/automl_dbt/target/
+dbt/automl_dbt/dbt_packages/
+dbt/automl_dbt/logs/
+
+# Node / Next.js
+web/node_modules/
+web/.next/
+web/out/
+web/.turbo/
+*.log
+
+# Env
+.env
+.env.local
+
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/
+.pytest_cache/
+.user.yml

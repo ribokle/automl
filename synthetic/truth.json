@@ -1,0 +1,119 @@
+{
+  "seed": 42,
+  "n_weeks": 104,
+  "n_skus": 48,
+  "n_stores": 5,
+  "ppgs": {
+    "PPG01": {
+      "ppg_id": "PPG01",
+      "category": "soda",
+      "brand": "AlphaCola",
+      "own_elasticity": -2.4,
+      "tpr_lift_log": 0.55,
+      "display_lift_pct": 0.22,
+      "feature_lift_pct": 0.15,
+      "seasonality_amp": 0.18,
+      "base_units": 1200,
+      "base_price": 1.99,
+      "price_jitter_pct": 0.04
+    },
+    "PPG02": {
+      "ppg_id": "PPG02",
+      "category": "soda",
+      "brand": "BetaPop",
+      "own_elasticity": -1.9,
+      "tpr_lift_log": 0.4,
+      "display_lift_pct": 0.18,
+      "feature_lift_pct": 0.12,
+      "seasonality_amp": 0.14,
+      "base_units": 800,
+      "base_price": 2.49,
+      "price_jitter_pct": 0.05
+    },
+    "PPG03": {
+      "ppg_id": "PPG03",
+      "category": "chips",
+      "brand": "CrispCo",
+      "own_elasticity": -2.8,
+      "tpr_lift_log": 0.65,
+      "display_lift_pct": 0.25,
+      "feature_lift_pct": 0.18,
+      "seasonality_amp": 0.1,
+      "base_units": 600,
+      "base_price": 3.49,
+      "price_jitter_pct": 0.05
+    },
+    "PPG04": {
+      "ppg_id": "PPG04",
+      "category": "chips",
+      "brand": "GoldKern",
+      "own_elasticity": -2.1,
+      "tpr_lift_log": 0.45,
+      "display_lift_pct": 0.2,
+      "feature_lift_pct": 0.14,
+      "seasonality_amp": 0.08,
+      "base_units": 450,
+      "base_price": 3.99,
+      "price_jitter_pct": 0.06
+    },
+    "PPG05": {
+      "ppg_id": "PPG05",
+      "category": "cereal",
+      "brand": "MorningOat",
+      "own_elasticity": -1.6,
+      "tpr_lift_log": 0.35,
+      "display_lift_pct": 0.15,
+      "feature_lift_pct": 0.1,
+      "seasonality_amp": 0.06,
+      "base_units": 300,
+      "base_price": 4.49,
+      "price_jitter_pct": 0.04
+    },
+    "PPG06": {
+      "ppg_id": "PPG06",
+      "category": "cereal",
+      "brand": "FlakeStar",
+      "own_elasticity": -1.4,
+      "tpr_lift_log": 0.3,
+      "display_lift_pct": 0.12,
+      "feature_lift_pct": 0.08,
+      "seasonality_amp": 0.05,
+      "base_units": 240,
+      "base_price": 4.99,
+      "price_jitter_pct": 0.04
+    },
+    "PPG07": {
+      "ppg_id": "PPG07",
+      "category": "icecream",
+      "brand": "FrostyPint",
+      "own_elasticity": -3.2,
+      "tpr_lift_log": 0.75,
+      "display_lift_pct": 0.3,
+      "feature_lift_pct": 0.2,
+      "seasonality_amp": 0.4,
+      "base_units": 180,
+      "base_price": 5.99,
+      "price_jitter_pct": 0.07
+    },
+    "PPG08": {
+      "ppg_id": "PPG08",
+      "category": "coffee",
+      "brand": "BrewMaster",
+      "own_elasticity": -1.2,
+      "tpr_lift_log": 0.25,
+      "display_lift_pct": 0.1,
+      "feature_lift_pct": 0.08,
+      "seasonality_amp": 0.05,
+      "base_units": 220,
+      "base_price": 7.99,
+      "price_jitter_pct": 0.03
+    }
+  },
+  "tolerances": {
+    "own_elasticity_pct": 0.2,
+    "wape_loglog": 0.15,
+    "wape_lightgbm": 0.12,
+    "ppgs_with_correct_sign": 8,
+    "ppgs_within_tolerance": 7
+  }
+}

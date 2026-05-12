@@ -1,0 +1,8 @@
+automl_dbt:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: "{{ env_var('DUCKDB_PATH', 'runs/dev/warehouse.duckdb') }}"
+      threads: 4
+      extensions: []
