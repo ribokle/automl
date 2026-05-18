@@ -13,6 +13,7 @@ from pathlib import Path
 import pandas as pd
 
 from core.agents.base import Agent
+from core.data.charts import corr_refined
 from core.features.engineering import ENGINEERED_COLUMNS, TARGET
 from core.features.refine import refine_features
 from core.orchestrator.state import AgentResult, ArtifactRef, RunState
@@ -97,8 +98,14 @@ class FeatureRefineAgent(Agent):
         }
         path = run_dir / "feature_refine.json"
         path.write_text(json.dumps(artifact, indent=2))
-
         result.artifacts.append(ArtifactRef(path=str(path), agent=self.name, name=path.name))
+
+        corr_chart = corr_refined(feats, refined["kept"])
+        corr_path = run_dir / "corr_refined.json"
+        corr_path.write_text(json.dumps(corr_chart, indent=2))
+        result.artifacts.append(
+            ArtifactRef(path=str(corr_path), agent=self.name, name=corr_path.name)
+        )
         result.outputs = {
             "n_kept": len(refined["kept"]),
             "n_dropped": len(refined["dropped"]),

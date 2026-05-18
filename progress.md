@@ -126,7 +126,19 @@ JS ≈ 90 kB gz with ECharts loaded (target was < 250 kB). Full pytest sweep:
 
 ---
 
-### Phase 2a-2 — EDA, features, LLM trace
+### Phase 2a-2 — EDA, features, LLM trace ✅
+**Status:** complete. EDA card shows the weekly trend + correlation
+heatmap + target-relationship table + findings. Feature-engineering card
+shows a 16-tile histogram grid (one per engineered column, with μ / σ /
+n). Feature-refine card shows the VIF bar (threshold marker, red /
+amber / green per VIF bucket), the refined-set correlation heatmap,
+the drop log + kept-list pills. All seven LLM-using agents emit an
+`<agent>_llm_trace.json` capturing system / user / response / model /
+tokens / `dry_run`; `LLM_TRACE=false` cleanly disables capture (covered
+by unit test). The "Agent thinking" panel renders each call collapsible
+with a `dry-run` badge or live token cost. `/runs/[id]` first-load JS:
+317 kB raw (≈ 90 kB gz; target was < 350 kB gz). Full pytest sweep:
+22 passed.
 
 **Backend**
 - `core/data/charts.py` — additions: `feature_histograms`, `corr_refined`.

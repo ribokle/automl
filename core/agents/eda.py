@@ -12,6 +12,7 @@ import json
 from pathlib import Path
 
 from core.agents.base import Agent
+from core.data.charts import eda_corr_matrix
 from core.features.eda import (
     missingness,
     numeric_summary,
@@ -117,8 +118,14 @@ class EDAAgent(Agent):
         }
         path = run_dir / "eda_report.json"
         path.write_text(json.dumps(artifact, indent=2))
-
         result.artifacts.append(ArtifactRef(path=str(path), agent=self.name, name=path.name))
+
+        corr_chart = eda_corr_matrix(corr)
+        corr_path = run_dir / "eda_corr_matrix.json"
+        corr_path.write_text(json.dumps(corr_chart, indent=2))
+        result.artifacts.append(
+            ArtifactRef(path=str(corr_path), agent=self.name, name=corr_path.name)
+        )
         result.outputs = {
             "n_features_summarised": len(summary),
             "n_candidates_ranked": len(rel),

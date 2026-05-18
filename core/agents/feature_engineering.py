@@ -13,6 +13,7 @@ from pathlib import Path
 import pandas as pd
 
 from core.agents.base import Agent
+from core.data.charts import feature_histograms
 from core.features.eda import ppg_week_aggregate
 from core.features.engineering import ENGINEERED_COLUMNS, TARGET, build_features
 from core.orchestrator.state import AgentResult, ArtifactRef, RunState
@@ -84,8 +85,14 @@ class FeatureEngineeringAgent(Agent):
         summary_path = run_dir / "feature_engineering.json"
         summary_path.write_text(json.dumps({**summary, "narrative": narrative}, indent=2))
 
+        hist_cols = [c for c in ENGINEERED_COLUMNS if c in feats.columns and c not in ("week_start", "ppg_id")]
+        hist_blob = feature_histograms(feats, hist_cols)
+        hist_path = run_dir / "feature_histograms.json"
+        hist_path.write_text(json.dumps(hist_blob, indent=2))
+
         result.artifacts.append(ArtifactRef(path=str(features_path), agent=self.name, name=features_path.name))
         result.artifacts.append(ArtifactRef(path=str(summary_path), agent=self.name, name=summary_path.name))
+        result.artifacts.append(ArtifactRef(path=str(hist_path), agent=self.name, name=hist_path.name))
         result.outputs = {
             "rows": int(len(feats)),
             "n_features": len(ENGINEERED_COLUMNS),

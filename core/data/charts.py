@@ -273,6 +273,63 @@ def ppg_price_box(assignments: pd.DataFrame, duckdb_path: Path, table: str = "pa
     return {"colours": colours, "boxes": boxes}
 
 
+def feature_histograms(df: pd.DataFrame, columns: list[str], bins: int = 20) -> dict[str, Any]:
+    """Per-column histogram + mean / std + min / max."""
+    missing = [c for c in columns if c not in df.columns]
+    if missing:
+        return {"missing_columns": missing}
+    hist: list[dict[str, Any]] = []
+    for c in columns:
+        s = pd.to_numeric(df[c], errors="coerce").dropna()
+        if s.empty:
+            hist.append({"column": c, "counts": [], "edges": [], "mean": None, "std": None, "min": None, "max": None})
+            continue
+        counts, edges = np.histogram(s.values, bins=bins)
+        hist.append(
+            {
+                "column": c,
+                "counts": [int(x) for x in counts],
+                "edges": [round(float(e), 4) for e in edges],
+                "mean": round(float(s.mean()), 4),
+                "std": round(float(s.std()), 4),
+                "min": round(float(s.min()), 4),
+                "max": round(float(s.max()), 4),
+                "n": int(s.size),
+            }
+        )
+    return {"bins": bins, "features": hist}
+
+
+def corr_refined(df: pd.DataFrame, columns: list[str]) -> dict[str, Any]:
+    """Symmetric correlation matrix of the kept features.
+
+    Output: ``{labels: [...], matrix: [[r, ...], ...]}`` — chart-ready for a
+    heatmap render.
+    """
+    missing = [c for c in columns if c not in df.columns]
+    if missing:
+        return {"missing_columns": missing}
+    sub = df[columns].apply(pd.to_numeric, errors="coerce").dropna()
+    if sub.empty or len(columns) < 2:
+        return {"labels": columns, "matrix": [[1.0]] if columns else [[]]}
+    corr = sub.corr()
+    return {
+        "labels": list(corr.columns),
+        "matrix": [[round(float(v), 3) for v in row] for row in corr.to_numpy()],
+    }
+
+
+def eda_corr_matrix(pairwise: dict[str, dict[str, float]]) -> dict[str, Any]:
+    """Reshape EDA's pairwise-corr dict into a labels+matrix heatmap shape."""
+    if not pairwise:
+        return {"labels": [], "matrix": []}
+    labels = list(pairwise.keys())
+    return {
+        "labels": labels,
+        "matrix": [[round(float(pairwise.get(a, {}).get(b, 1.0 if a == b else 0.0)), 3) for b in labels] for a in labels],
+    }
+
+
 def eligibility_bars(scores: pd.DataFrame) -> dict[str, Any]:
     """Per-PPG eligibility breakdown by metric.
 

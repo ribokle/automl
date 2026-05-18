@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { getArtifact } from "@/lib/api";
+import { CorrHeatmap, type CorrData } from "./charts/CorrHeatmap";
 import { CoverageHeatmap, type CoverageData } from "./charts/CoverageHeatmap";
+import { FeatureHistograms, type HistogramsData } from "./charts/FeatureHistograms";
 import { TrendChart, type TrendData } from "./charts/TrendChart";
 import {
   PPGScatter,
@@ -11,12 +13,18 @@ import {
 } from "./charts/PPGScatter";
 import { PPGPriceBox, type PriceBoxData } from "./charts/PPGPriceBox";
 import { EligibilityBars, type EligibilityData } from "./charts/EligibilityBars";
+import { VIFBar } from "./charts/VIFBar";
 import { PPGTabs } from "./PPGTabs";
 import { PPGTable } from "./PPGTable";
 import { DataPreview, type ProfileBlob } from "./tables/DataPreview";
+import { DropLog, KeptList, type DropLogData } from "./tables/DropLog";
 import { SchemaTable } from "./tables/SchemaTable";
 import { QualityPanel, type QualityData } from "./tables/QualityPanel";
 import { AnomalyTable, type FindingsBlob } from "./tables/AnomalyTable";
+import {
+  TargetRelationship,
+  type TargetRelationshipRow,
+} from "./tables/TargetRelationship";
 import type { AgentName, RunEvent } from "@/lib/types";
 
 interface Props {
@@ -62,6 +70,12 @@ export function AgentVisuals(props: Props) {
       return <PPGMappingVisuals {...props} />;
     case "ppg_selection":
       return <PPGSelectionVisuals {...props} />;
+    case "eda":
+      return <EDAVisuals {...props} />;
+    case "feature_engineering":
+      return <FeatureEngineeringVisuals {...props} />;
+    case "feature_refine":
+      return <FeatureRefineVisuals {...props} />;
     default:
       return null;
   }
@@ -163,6 +177,106 @@ function PPGSelectionVisuals({ runId, ready }: Props) {
       <Section title="Per-PPG eligibility (stacked contributions)">
         <EligibilityBars data={bars} />
       </Section>
+    </div>
+  );
+}
+
+interface EDAReport {
+  target_relationship: TargetRelationshipRow[];
+  findings: string[];
+  narrative: string;
+}
+
+function EDAVisuals({ runId, ready }: Props) {
+  const trend = useArtifact<TrendData>(runId, "weekly_trend.json", ready);
+  const corr = useArtifact<CorrData>(runId, "eda_corr_matrix.json", ready);
+  const report = useArtifact<EDAReport>(runId, "eda_report.json", ready);
+  if (!trend && !corr && !report) return null;
+  return (
+    <div className="mt-4 grid gap-5 border-t border-slate-800 pt-4 md:grid-cols-2">
+      {trend && !("missing_columns" in trend) && (
+        <Section title="Weekly units & average price">
+          <TrendChart data={trend} />
+        </Section>
+      )}
+      {corr && !("missing_columns" in corr) && (
+        <Section title="Pairwise correlation · numeric candidates">
+          <CorrHeatmap data={corr} />
+        </Section>
+      )}
+      {report && !("missing_columns" in report) && (
+        <Section title="Target relationship · ranked by |spearman ρ|">
+          <TargetRelationship rows={report.target_relationship} />
+        </Section>
+      )}
+      {report && !("missing_columns" in report) && report.findings?.length > 0 && (
+        <Section title="EDA findings">
+          <ul className="space-y-1 text-[11px] text-slate-300">
+            {report.findings.map((f, i) => (
+              <li key={i} className="rounded border border-slate-800 bg-slate-900/40 px-2 py-1">
+                {f}
+              </li>
+            ))}
+          </ul>
+        </Section>
+      )}
+    </div>
+  );
+}
+
+function FeatureEngineeringVisuals({ runId, ready }: Props) {
+  const hist = useArtifact<HistogramsData>(runId, "feature_histograms.json", ready);
+  if (!hist) return null;
+  return (
+    <div className="mt-4 border-t border-slate-800 pt-4">
+      <Section title="Engineered-feature distributions (20-bin histograms)">
+        <FeatureHistograms data={hist} />
+      </Section>
+    </div>
+  );
+}
+
+interface RefineReport {
+  vif: Record<string, number>;
+  kept: string[];
+  dropped: { feature: string; reason: string }[];
+  max_vif: number;
+  max_abs_corr: number;
+  vif_threshold: number;
+  passes_thresholds: boolean;
+}
+
+function FeatureRefineVisuals({ runId, ready }: Props) {
+  const report = useArtifact<RefineReport>(runId, "feature_refine.json", ready);
+  const corr = useArtifact<CorrData>(runId, "corr_refined.json", ready);
+  if (!report && !corr) return null;
+  const dropLog: DropLogData | null = report && !("missing_columns" in report)
+    ? { kept: report.kept, dropped: report.dropped }
+    : null;
+  return (
+    <div className="mt-4 space-y-5 border-t border-slate-800 pt-4">
+      <div className="grid gap-5 md:grid-cols-2">
+        {report && !("missing_columns" in report) && (
+          <Section title={`VIF per kept feature · threshold ${report.vif_threshold}`}>
+            <VIFBar data={{ vif: report.vif, threshold: report.vif_threshold }} />
+          </Section>
+        )}
+        {corr && !("missing_columns" in corr) && (
+          <Section title="Pairwise correlation · refined set">
+            <CorrHeatmap data={corr} />
+          </Section>
+        )}
+      </div>
+      {dropLog && (
+        <div className="grid gap-5 md:grid-cols-2">
+          <Section title={`Dropped (${dropLog.dropped.length})`}>
+            <DropLog data={dropLog} />
+          </Section>
+          <Section title={`Kept (${dropLog.kept.length})`}>
+            <KeptList data={dropLog} />
+          </Section>
+        </div>
+      )}
     </div>
   );
 }

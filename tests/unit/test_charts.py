@@ -8,12 +8,16 @@ from __future__ import annotations
 from pathlib import Path
 
 import duckdb
+import numpy as np
 import pandas as pd
 import pytest
 
 from core.data.charts import (
+    corr_refined,
     coverage_grid,
+    eda_corr_matrix,
     eligibility_bars,
+    feature_histograms,
     ppg_price_box,
     ppg_scatter_behaviour,
     ppg_scatter_facet,
@@ -115,6 +119,45 @@ def test_eligibility_bars(assignments: pd.DataFrame, panel_warehouse: Path) -> N
     for bar in out["bars"]:
         contributions_sum = sum(bar["contributions"].values())
         assert abs(contributions_sum - bar["score"]) <= 0.05
+
+
+def test_feature_histograms() -> None:
+    df = pd.DataFrame(
+        {
+            "a": np.random.default_rng(0).normal(size=200),
+            "b": np.random.default_rng(1).normal(loc=2, scale=0.5, size=200),
+            "label": ["x"] * 200,
+        }
+    )
+    out = feature_histograms(df, ["a", "b"], bins=10)
+    assert out["bins"] == 10
+    assert len(out["features"]) == 2
+    for f in out["features"]:
+        assert len(f["counts"]) == 10
+        assert len(f["edges"]) == 11
+        assert sum(f["counts"]) == 200
+
+
+def test_corr_refined_shape() -> None:
+    rng = np.random.default_rng(0)
+    df = pd.DataFrame({"a": rng.normal(size=100), "b": rng.normal(size=100), "c": rng.normal(size=100)})
+    out = corr_refined(df, ["a", "b", "c"])
+    assert out["labels"] == ["a", "b", "c"]
+    assert len(out["matrix"]) == 3
+    for i in range(3):
+        assert out["matrix"][i][i] == 1.0
+        for j in range(3):
+            assert -1.0 <= out["matrix"][i][j] <= 1.0
+
+
+def test_eda_corr_matrix_reshape() -> None:
+    pairwise = {
+        "p": {"p": 1.0, "u": -0.94},
+        "u": {"p": -0.94, "u": 1.0},
+    }
+    out = eda_corr_matrix(pairwise)
+    assert out["labels"] == ["p", "u"]
+    assert out["matrix"] == [[1.0, -0.94], [-0.94, 1.0]]
 
 
 def test_graceful_degradation_missing_columns() -> None:

@@ -10,9 +10,27 @@ import {
 } from "@/lib/agent-meta";
 import { approveAgent, artifactUrl, rejectAgent } from "@/lib/api";
 import type { AgentName, AgentState, AgentStatus, RunEvent } from "@/lib/types";
+import { AgentThinking } from "./AgentThinking";
 import { AgentVisuals } from "./AgentVisuals";
 
-const VISUALS_AGENTS: ReadonlySet<AgentName> = new Set(["ingestion", "ppg_mapping", "ppg_selection"] as const);
+const VISUALS_AGENTS: ReadonlySet<AgentName> = new Set([
+  "ingestion",
+  "ppg_mapping",
+  "ppg_selection",
+  "eda",
+  "feature_engineering",
+  "feature_refine",
+] as const);
+
+const LLM_AGENTS: ReadonlySet<AgentName> = new Set([
+  "ingestion",
+  "ppg_mapping",
+  "ppg_selection",
+  "feature_selection",
+  "eda",
+  "feature_engineering",
+  "feature_refine",
+] as const);
 
 interface Props {
   runId: string;
@@ -36,9 +54,11 @@ export function AgentCard({ runId, agent, index, status, events, agentState, isL
   const reasoning = agentState?.reasoning;
   const confidence = agentState?.confidence;
   const errorText = agentState?.error ?? events.find((e) => e.type === "agent_failed")?.error;
-  const hasVisuals = VISUALS_AGENTS.has(agent) && (status === "done" || status === "awaiting_approval");
+  const ready = status === "done" || status === "awaiting_approval";
+  const hasVisuals = VISUALS_AGENTS.has(agent) && ready;
+  const hasThinking = LLM_AGENTS.has(agent) && ready;
   const showDisclosure = Boolean(
-    reasoning || toolCalls.length > 0 || errorText || hasVisuals || (agentState?.artifacts?.length ?? 0) > 0,
+    reasoning || toolCalls.length > 0 || errorText || hasVisuals || hasThinking || (agentState?.artifacts?.length ?? 0) > 0,
   );
 
   async function handleApprove() {
@@ -139,6 +159,7 @@ export function AgentCard({ runId, agent, index, status, events, agentState, isL
             {errorText && (
               <div className="rounded bg-rose-950/40 px-2 py-1.5 text-[11px] text-rose-300">{errorText}</div>
             )}
+            {hasThinking && <AgentThinking runId={runId} agent={agent} ready={open} />}
             {hasVisuals && <AgentVisuals runId={runId} agent={agent} ready={open} events={events} />}
           </div>
         )}
