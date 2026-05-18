@@ -25,6 +25,7 @@ dependencies = [
     "python-multipart>=0.0.9",
     "scikit-learn>=1.5",
     "scipy>=1.13",
+    "statsmodels>=0.14",
 ]
 
 [project.optional-dependencies]

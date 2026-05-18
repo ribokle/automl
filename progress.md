@@ -187,7 +187,51 @@ with a `dry-run` badge or live token cost. `/runs/[id]` first-load JS:
 ## Phase 3 — Modeling + Results Reasoning
 Model tools (log-log, semi-log, LightGBM+SHAP, PyMC hierarchical), iterative modeling agent that retries on wrong-sign elasticities, results-reasoning agent, model-choice approval gate, elasticity chart UI. Verify log-log recovers truth on synthetic.
 
-**Status:** pending.
+**Status:** in progress.
+
+### Phase 3a — Log-log + semi-log with sign-retry ✅
+**Status:** complete. Modeling agent now ships for real (replaces
+StubAgent). Log-log OLS recovers the correct elasticity sign for 8/8 PPGs
+on the synthetic panel; magnitudes land in the plausible [0.3, 6.0] band
+on 8/8. The sign-retry to semi-log is wired and verified by a forced
+failure (monkeypatched log-log) that the agent recovers from end-to-end.
+
+**Backend**
+- `core/models/base.py` — `ElasticityFit` dataclass (own elasticity,
+  std err, p-value, R², n, controls, coefficients, diagnostics, `sign_ok`).
+- `core/models/loglog_ols.py` — statsmodels OLS on
+  `log_units ~ log_price + controls`.
+- `core/models/semilog_ols.py` — statsmodels OLS on
+  `log_units ~ price + controls`; converts β to elasticity at mean price.
+- `core/agents/modeling.py` — per-PPG fit + sign-retry loop, writes
+  `modeling_results.json` (every attempt) + `elasticity_per_ppg.json`
+  (compact). LLM emits narrative + concern flags; dry-run fallback intact.
+- `core/orchestrator/runner.py` — registers `ModelingAgent` in
+  `REAL_AGENTS`. The `modeling` approval gate is still on by default.
+
+**Tests**
+- `tests/unit/test_modeling.py` — log-log sign recovery ≥7/8,
+  magnitude-band sanity ≥5/8, semi-log smoke check, retry-wiring test,
+  full agent run writes both artefacts.
+
+**Deps**
+- Add `statsmodels>=0.14` to `pyproject.toml`.
+
+**Acceptance gate**
+- Log-log recovers the elasticity sign on ≥7/8 PPGs (got 8/8). ✅
+- Sign-retry fires and switches the winner to semi-log when log-log fails. ✅
+- `modeling_results.json` + `elasticity_per_ppg.json` are on disk after
+  the agent runs end-to-end. ✅
+
+### Phase 3b — LightGBM + SHAP + results-reasoning agent (pending)
+Adds LightGBM + SHAP per PPG so the agent can compare a non-parametric fit
+to the parametric ones, picks the best-by-WAPE model, and surfaces SHAP
+attribution. Plus the results-reasoning agent + model-choice approval gate.
+
+### Phase 3c — Bayesian hierarchical + elasticity chart UI (pending)
+PyMC hierarchical model partial-pooling across PPGs (Numpyro backend for
+compile speed), and the inline elasticity-with-error-bars chart in the
+modeling AgentCard. Wires the existing model-choice gate to the UI.
 
 ## Phase 4 — Decomposition + Simulation
 Decomp + sim tools, two agents, stacked-bar (due-to) + scenario-grid heatmap UI. Verify decomposition reconciles to observed.
