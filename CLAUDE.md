@@ -128,8 +128,14 @@ cd web && pnpm install && pnpm dev    # or pnpm build
 
 - Server components by default; mark `"use client"` only on the file that
   actually needs hooks/state.
-- API base is `process.env.NEXT_PUBLIC_API_BASE` (defaults to
-  `http://localhost:8000`).
+- API access goes through `web/lib/api.ts`. Browser-side fetches use
+  same-origin `/api/*` URLs and rely on the rewrite in
+  `web/next.config.mjs` to proxy to the API server (`API_PROXY_TARGET`
+  or `NEXT_PUBLIC_API_BASE`, default `http://localhost:8000`). The
+  server-side caller (`listRuns` in `app/runs/page.tsx`) uses the
+  absolute URL from `process.env`. Don't introduce new direct
+  `http://localhost:...` fetches in client code — the bundle moves
+  between machines, the env doesn't.
 - Per-agent UI gets re-fetched when its `agent_finished` event arrives -
   see `PPGTable.tsx` for the pattern.
 
@@ -177,6 +183,25 @@ phase complete until that metric is verified end-to-end:
   worked, the route only 404'd for anyone cloning from GitHub). The
   `test_gitignore_does_not_swallow_sources` pytest in `tests/unit/`
   enforces this — keep it green.
+- **Never compare paths with string ops; use `pathlib`.** Code like
+  `str(target).startswith(str(base) + "/")` works on POSIX and silently
+  breaks on Windows because resolved paths use `\`, not `/` — so every
+  legitimate request looks like a path-traversal attempt. Use
+  `target.relative_to(base)` (raises `ValueError` if outside) or
+  `target.is_relative_to(base)` (3.9+). This trap once made every artifact
+  fetch return 400 on Windows while the same code worked on Linux CI. The
+  endpoint check lives at `api/routes/artifacts.py`; regression coverage
+  is `tests/unit/test_artifacts_route.py`.
+- **Bake nothing host-specific into the Next.js client bundle.** Don't
+  read `process.env.NEXT_PUBLIC_*` for hostnames the browser will fetch
+  from — those values are inlined at build time and won't survive moving
+  the build to another machine. The browser always hits same-origin
+  `/api/*`; `web/next.config.mjs` proxies that prefix to the API server
+  (configurable at next-server startup via `API_PROXY_TARGET`). The one
+  exception is the SSR caller in `web/app/runs/page.tsx`, which uses an
+  absolute URL because the server process can resolve `localhost:8000`
+  directly. When adding a new fetch, route it through `web/lib/api.ts`
+  so it picks up the right base automatically.
 
 ## When in doubt
 
