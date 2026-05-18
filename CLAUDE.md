@@ -170,6 +170,13 @@ phase complete until that metric is verified end-to-end:
   delete it.
 - **Smallest commit that works.** Don't pile cleanup onto a feature commit.
 - **dry-run by default** on every new LLM call. Real spend is opt-in.
+- **Anchor every `.gitignore` pattern that names a top-level dir.** Use
+  `/runs/`, not `runs/`. An unanchored pattern matches anywhere in the tree
+  and will silently swallow real source files (this trap once cost us the
+  Next.js `web/app/runs/` route segment — commits looked clean, screenshots
+  worked, the route only 404'd for anyone cloning from GitHub). The
+  `test_gitignore_does_not_swallow_sources` pytest in `tests/unit/`
+  enforces this — keep it green.
 
 ## When in doubt
 
