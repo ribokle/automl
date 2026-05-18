@@ -29,13 +29,30 @@ def _severity_from_status(status: str, configured_severity: str | None) -> Sever
     return Severity.info
 
 
+def _ensure_dbt_packages(runner: "object", project_dir: Path) -> None:
+    """Install dbt package deps the first time we see this project_dir.
+
+    Lets a fresh checkout run end-to-end without a separate `dbt deps` step —
+    the build call below would otherwise fail compiling models that reference
+    dbt_utils / dbt_expectations macros.
+    """
+    if (project_dir / "dbt_packages").exists():
+        return
+    runner.invoke([  # type: ignore[attr-defined]
+        "deps",
+        "--project-dir", str(project_dir),
+        "--profiles-dir", str(project_dir),
+        "--no-version-check",
+    ])
+
+
 def run_dbt_build(duckdb_path: Path, project_dir: Path = DBT_PROJECT_DIR) -> list[CheckResult]:
     """Execute `dbt build` against `duckdb_path` and return per-node results."""
-    # dbt-core's Python entry point.
     from dbt.cli.main import dbtRunner, dbtRunnerResult
 
     os.environ["DUCKDB_PATH"] = str(duckdb_path.resolve())
     runner = dbtRunner()
+    _ensure_dbt_packages(runner, project_dir)
     args = [
         "build",
         "--project-dir", str(project_dir),

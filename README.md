@@ -254,13 +254,49 @@ services:
 
 ## Troubleshooting
 
+### `uv sync` fails with an SSL / certificate error
+
+This is almost always a corporate proxy that re-signs TLS traffic with a
+private CA. Pick one:
+
+```bash
+# Option A — use the OS / system trust store (preferred on machines that
+# already trust the corporate CA at the OS level).
+export UV_NATIVE_TLS=1
+uv sync
+
+# Option B — point uv at a specific CA bundle (e.g. one shipped by IT).
+export SSL_CERT_FILE=/path/to/corp-ca-bundle.crt
+uv sync
+
+# Option C — last resort, allow uv to skip TLS verification for the
+# package mirrors only. Don't leave this in your shell rc.
+export UV_INSECURE_HOST="pypi.org files.pythonhosted.org"
+uv sync
+```
+
+### `dbt` complains about missing `dbt_utils` / `dbt_expectations` macros
+
+The dbt mart depends on two external packages (`packages.yml`). The runner
+auto-installs them the first time it builds (it runs `dbt deps` when
+`dbt/automl_dbt/dbt_packages/` is missing), so a plain
+`uv run automl run --data data/synthetic.csv` is enough on a fresh checkout.
+If you want to install them manually:
+
+```bash
+uv run dbt deps --project-dir dbt/automl_dbt --profiles-dir dbt/automl_dbt
+```
+
+### Other
+
 - **`automl: command not found`** — you skipped `uv sync` or aren't using
-  `uv run`. Always prefix with `uv run`.
-- **dbt fails on first run** — dbt-duckdb needs `~/.dbt/profiles.yml` to be
-  absent or to point at the project profile. The repo's `dbt/automl_dbt/`
-  is self-contained; the runner sets `DBT_PROFILES_DIR` per run.
-- **SSE stream stalls behind a proxy** — disable response buffering on the
-  `/runs/*/events` path (nginx: `proxy_buffering off`).
+  `uv run`. Always prefix Python entry points with `uv run`.
+- **dbt profile not found** — the repo's `dbt/automl_dbt/profiles.yml` is
+  self-contained and the runner sets `DBT_PROFILES_DIR` per run; a stale
+  `~/.dbt/profiles.yml` can still be picked up by a manual `dbt` invocation
+  — pass `--profiles-dir dbt/automl_dbt` to override it.
+- **SSE stream stalls behind a reverse proxy** — disable response buffering
+  on the `/runs/*/events` path (nginx: `proxy_buffering off`).
 - **LLM output looks templated** — `ANTHROPIC_API_KEY` is unset, so every
   agent is running its dry-run fallback. This is intentional and expected
   for cheap CI / smoke runs.
