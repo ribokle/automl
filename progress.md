@@ -12,10 +12,10 @@ Data tools + PPG tools, three agents, approval gate after mapping, PPGTable UI w
 
 **Status:** complete. PPG mapping recovers 100% of the synthetic truth (8/8 PPGs, 48/48 SKUs).
 
-## Phase 2 — EDA + Feature Engineering + Refine
+## Phase 2 — EDA + Feature Engineering + Refine ✅
 EDA tools + feature tools, four agents (feature-candidates, EDA, feature-engineering, feature-refine), artifact gallery UI. Verify VIF<10 and no |corr|>0.95 pairs remain.
 
-**Status:** pending.
+**Status:** complete. Refined feature set keeps `log_price` as the elasticity primary; max VIF 7.92, max |corr| 0.91 on the synthetic panel.
 
 ## Phase 3 — Modeling + Results Reasoning
 Model tools (log-log, semi-log, LightGBM+SHAP, PyMC hierarchical), iterative modeling agent that retries on wrong-sign elasticities, results-reasoning agent, model-choice approval gate, elasticity chart UI. Verify log-log recovers truth on synthetic.

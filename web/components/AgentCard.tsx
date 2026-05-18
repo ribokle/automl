@@ -8,7 +8,7 @@ import {
   summariseOutputs,
   summariseTool,
 } from "@/lib/agent-meta";
-import { approveAgent, rejectAgent } from "@/lib/api";
+import { approveAgent, artifactUrl, rejectAgent } from "@/lib/api";
 import type { AgentName, AgentState, AgentStatus, RunEvent } from "@/lib/types";
 
 interface Props {
@@ -114,9 +114,18 @@ export function AgentCard({ runId, agent, index, status, events, agentState, isL
             {agentState?.artifacts && agentState.artifacts.length > 0 && (
               <div className="mb-3">
                 <div className="mb-1 text-[10px] uppercase tracking-wider text-slate-500">Artifacts</div>
-                <ul className="space-y-0.5 font-mono text-[11px] text-slate-300">
+                <ul className="space-y-0.5 font-mono text-[11px]">
                   {agentState.artifacts.map((a) => (
-                    <li key={a.id}>{a.name}</li>
+                    <li key={a.id}>
+                      <a
+                        href={artifactUrl(runId, a.name)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-emerald-300 hover:underline"
+                      >
+                        {a.name}
+                      </a>
+                    </li>
                   ))}
                 </ul>
               </div>

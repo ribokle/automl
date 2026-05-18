@@ -27,6 +27,9 @@ export async function getRun(id: string): Promise<RunStateFull> {
 
 export const eventsUrl = (id: string) => `${API_BASE}/runs/${id}/events`;
 
+export const artifactUrl = (runId: string, name: string) =>
+  `${API_BASE}/artifacts/${runId}/${name}`;
+
 export async function approveAgent(runId: string, agent: string): Promise<void> {
   const res = await fetch(`${API_BASE}/runs/${runId}/approve?agent=${encodeURIComponent(agent)}`, {
     method: "POST",
