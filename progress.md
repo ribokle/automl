@@ -18,90 +18,152 @@ EDA tools + feature tools, four agents (feature-candidates, EDA, feature-enginee
 **Status:** complete. Refined feature set keeps `log_price` as the elasticity primary; max VIF 7.92, max |corr| 0.91 on the synthetic panel.
 
 ## Phase 2a — Data Visibility Layer
-Make every Phase-1/2 agent's work visible. A reviewer must be able to *see* what
-the data looks like, which quality rules fired and why, how SKUs got grouped,
-and which feature decisions got made — not just whether each agent returned
-`done`. Decided: inline layout (each AgentCard expands with its own visuals),
-Apache ECharts for chart rendering. Mockups under `web/app/dev/` show the
-target visual style.
+Make every Phase-1/2 agent's work visible. A reviewer must be able to *see*
+what the data looks like, which quality rules fired and why, how SKUs got
+grouped, and which feature decisions got made — not just whether each agent
+returned `done`.
 
-### Backend — chart-ready artefacts
-Each agent gets a follow-on JSON the frontend can render without re-querying
-DuckDB. New module `core/data/charts.py` builds them; agents write them
-alongside their existing artefacts.
+**Layout:** inline — each AgentCard expands with its own visuals (mockups
+under `web/app/dev/`).
+**Charts:** Apache ECharts via `echarts-for-react`, tree-shaken
+(core + heatmap + scatter + boxplot + bar + line modules only),
+each chart wrapped in `"use client"` + `dynamic({ ssr: false })`.
+**Architecture:** per-agent — each agent writes its own chart-ready artefacts
+at the end of `_execute()`. Shared math lives in `core/data/charts.py`;
+agents call it. No new agent in the DAG.
+**Shipping:** split into **2a-1** (quality + PPG rationale) and **2a-2**
+(EDA + features + LLM trace) so each is one day, one merge.
 
-| Agent | Adds |
-|---|---|
-| ingestion | `coverage_grid.json` (sparse SKU × week matrix), `weekly_trend.json` (panel-wide units + price + promo share); enrich `ingestion_findings.json` with severity + row counts |
-| ppg_mapping | `ppg_scatter.json` (per-SKU x = price tier, y = log price, colour = PPG), `ppg_price_box.json` (per-PPG min/q1/median/q3/max) |
-| ppg_selection | per-metric eligibility breakdown for a stacked-bar view |
-| eda | enrich existing `eda_report.json` with chart-ready arrays (already has target_relationship + pairwise_corr) |
-| feature_engineering | `feature_histograms.json` (20-bin histograms + mean/std per engineered column) |
-| feature_refine | enrich existing `feature_refine.json` with the refined-set correlation matrix |
+### Cross-cutting decisions
+- **dbt + GE results parser** (`core/data/test_results.py`): single normalised
+  list of `{source, rule, severity, status, message, row_count}` joined from
+  dbt's `target/run_results.json` and GE's validation output. Both 2a-1 and
+  the existing ingestion artefact consume it.
+- **LLM trace:** full system + user + response per agent into
+  `<agent>_llm_trace.json`. Default on; disable per-run with
+  `LLM_TRACE=false`. Trace is also written when dry-run fired, with a
+  `dry_run: true` field so the UI can show the deterministic fallback message.
+- **Real-data graceful degradation:** PPG visuals depend on `brand` /
+  `category` / `pack_size`. When any are absent in the uploaded CSV, the
+  per-chart component renders a `"missing column: <name>"` placeholder
+  rather than crashing. Acceptance criterion in both sub-phases.
+- **Test stack:** no new project dep. The throwaway
+  `scripts/visual_smoke.mjs` Playwright script (already used for manual
+  screenshots) gets promoted into the repo and called from
+  `make test-visual`. CI stays pytest-only; visual smoke is opt-in until a
+  later phase formalises e2e.
+- **PPG visual:** ship all three (`tier × log-price`, behaviour-based,
+  faceted brand × pack-size by category) inside one inline tab strip within
+  the PPG card. The tabbed-inline pattern (`PPGTabs.tsx`) is a generic
+  component we'll reuse for any future "multiple views of the same thing"
+  surface.
 
-Every LLM-using agent also writes `<agent>_llm_trace.json` capturing system
-prompt, user prompt, raw response, and whether the dry-run fallback fired —
-so the "agentic layer" is auditable, not opaque.
+---
 
-### Frontend — ECharts integration (inline)
-- Add `echarts` + `echarts-for-react`, tree-shaken to `core` + the chart /
-  component modules we use; gz cost target < 200 kB.
-- `web/components/charts/EChart.tsx` — `"use client"` wrapper that
-  `dynamic({ ssr: false })`-imports echarts, applies a slate dark theme,
-  exposes a typed `option` prop.
-- One chart component per type: `TrendChart`, `CoverageHeatmap`, `PPGScatter`,
-  `PPGPriceBox`, `CorrHeatmap`, `VIFBar`, `FeatureHistograms`.
-- Plain-React tables stay: `DataPreview`, `SchemaTable`, `QualityPanel`,
-  `AnomalyTable`, `DropLog`.
+### Phase 2a-1 — Quality story + PPG rationale
 
-Inline integration in `AgentCard.tsx` (one new section per agent, shown when
-status is `done` or `awaiting_approval` and the artefact exists):
+**Backend**
+- `core/data/charts.py` — builders:
+  - `coverage_grid(con)` → sparse SKU × week presence matrix
+  - `weekly_trend(con)` → panel-wide units + price + promo share by week
+  - `ppg_scatter_tier(assignments, con)` → x = tier, y = log price
+  - `ppg_scatter_behaviour(assignments, con)` → x = log mean units, y = per-SKU corr(log units, log price)
+  - `ppg_scatter_facet(assignments, con)` → faceted (category, brand × pack-size) coordinates
+  - `ppg_price_box(con)` → per-PPG quantiles
+  - `eligibility_bars(selection)` → stacked-bar dataset
+- `core/data/test_results.py` — dbt + GE results parser.
+- Extend `core/agents/ingestion.py`: write `coverage_grid.json`,
+  `weekly_trend.json`, `quality_results.json`; enrich `ingestion_findings`
+  with severity + row counts.
+- Extend `core/agents/ppg_mapping.py`: write three `ppg_scatter_*.json`
+  + `ppg_price_box.json`.
+- Extend `core/agents/ppg_selection.py`: write `ppg_eligibility_bars.json`.
 
-- **ingestion** → DataPreview + SchemaTable + CoverageHeatmap + QualityPanel + AnomalyTable
-- **ppg_mapping** → PPGScatter + PPGPriceBox (and pulls the existing PPGTable into the card body)
-- **ppg_selection** → eligibility stacked-bar
-- **eda** → TrendChart + target-relationship table + CorrHeatmap
-- **feature_engineering** → FeatureHistograms grid
-- **feature_refine** → VIFBar + refined CorrHeatmap + DropLog
+**Frontend**
+- Install `echarts` + `echarts-for-react`; tree-shake; remove `recharts`
+  from real components (mockups under `web/app/dev/` keep it).
+- `web/components/charts/EChart.tsx` — typed `option` wrapper, dark slate
+  theme, `ssr: false`.
+- Chart components: `TrendChart`, `CoverageHeatmap`, `PPGScatter`
+  (parametric — takes any of the three datasets), `PPGPriceBox`,
+  `EligibilityBars`.
+- Tables: `DataPreview`, `SchemaTable`, `QualityPanel` (pass/warn/fail
+  pills + severity + row-count), `AnomalyTable`.
+- `web/components/PPGTabs.tsx` — inline tab strip for the three PPG views.
+- Inline integration in `AgentCard.tsx`:
+  - **ingestion** → DataPreview + SchemaTable + CoverageHeatmap +
+    QualityPanel + AnomalyTable.
+  - **ppg_mapping** → PPGTabs (3 scatters) + PPGPriceBox; move the existing
+    standalone PPGTable into this card body.
+  - **ppg_selection** → EligibilityBars.
 
-A new "Agent thinking" sub-section in every expanded card surfaces the
-LLM trace (with a `dry-run` badge when the fallback ran) so reviewers can see
-exactly what prompt produced the rationale on screen.
+**Tests**
+- `tests/unit/test_charts.py` — every builder returns non-empty,
+  well-formed shapes on the synthetic warehouse.
+- `tests/unit/test_quality_results.py` — parser merges dbt + GE outputs into
+  the normalised list.
+- `tests/unit/test_graceful_degradation.py` — feed the chart builders a
+  panel missing `brand` / `category` / `pack_size`; verify a structured
+  `{"missing_columns": [...]}` artefact is produced instead of an exception.
+- `scripts/visual_smoke.mjs` (committed) — boots api + web, drives a no-gate
+  run, asserts ingestion + ppg_mapping cards expand and chart containers
+  have non-zero dimensions.
 
-### Tests
-- `tests/unit/test_charts.py` — every chart-data tool runs against the
-  synthetic warehouse and returns non-empty, well-formed shapes.
-- `tests/unit/test_artifact_completeness.py` — end-to-end run; assert every
-  Phase 1/2 agent emits the expected chart-ready artefact under the run dir.
-- Playwright `tests/e2e/test_run_page_visuals.spec.ts` — boot API, drive a
-  no-gate run, expand the ingestion / ppg_mapping / eda / feature_refine
-  cards, assert each chart container renders with non-zero dimensions and no
-  console errors.
+**Acceptance gate**
+- Ingestion card surfaces quality results with severity, message, row count.
+- All 3 PPG scatters render with non-empty data; price box shows 8 PPGs.
+- Tab switching between the 3 PPG views works (no remount jank).
+- Missing-column case shows a placeholder, not a crash.
+- `/runs/[id]` first-load JS < 250 kB gz.
+- pytest + visual smoke green.
 
-### Acceptance gate
-- **Coverage:** every Phase 1 + Phase 2 agent has at least one chart / table
-  visible inside its expanded card.
-- **Quality story is visible:** Ingestion card surfaces dbt + GE rules with
-  pass / warn / fail pills, the rule's message, row count, and severity. The
-  anomaly table lists every flagged row with the reason.
-- **PPG rationale is visible:** the SKU scatter + price-box together let a
-  reviewer accept the grouping at a glance.
-- **Feature decisions are visible:** VIF bar + drop log + refined corr heatmap.
-- **Agentic layer is auditable:** every LLM-using agent surfaces its prompt /
-  response or marks itself dry-run.
-- **Performance:** `/runs/[id]` first-load JS stays below ~350 kB gz.
-- **Tests green:** existing 7 pytest + new chart-data tests + Playwright snapshot.
+---
 
-### Implementation order
-1. `core/data/charts.py` + chart-ready artefacts from each agent.
-2. `tests/unit/test_charts.py` + `test_artifact_completeness.py`.
-3. ECharts install + `EChart` wrapper + chart components.
-4. Inline integration in `AgentCard.tsx`; remove the now-redundant standalone PPGTable below the timeline.
-5. LLM trace artefact + "Agent thinking" sub-section.
-6. Playwright visual snapshot test.
-7. Verification screenshots on the PR; flip Phase 2a to ✅.
+### Phase 2a-2 — EDA, features, LLM trace
 
-**Status:** planned. Mockups under `web/app/dev/` (inline / tabs / subroutes) for design comparison; inline + ECharts chosen.
+**Backend**
+- `core/data/charts.py` — additions: `feature_histograms`, `corr_refined`.
+- Extend `core/agents/eda.py`: write chart-ready slices of
+  `eda_report.json` so the frontend doesn't reshape arrays.
+- Extend `core/agents/feature_engineering.py`: write
+  `feature_histograms.json` (20-bin histogram + mean/std per engineered
+  column).
+- Extend `core/agents/feature_refine.py`: write `corr_refined.json`
+  (refined-set correlation matrix).
+- `core/agents/base.py`: LLM-trace capture in `call_llm()`. Records system,
+  user, response, model, cache hit/miss, `dry_run` flag. Writes
+  `<agent>_llm_trace.json` unless `LLM_TRACE=false`.
+
+**Frontend**
+- Chart components: `CorrHeatmap`, `VIFBar`, `FeatureHistograms`.
+- Tables: `DropLog` (feature + reason).
+- `AgentThinking.tsx` — collapsible 3-pane (system / user / response) with a
+  `dry-run` badge.
+- Inline integration:
+  - **eda** → TrendChart + target-relationship table + CorrHeatmap.
+  - **feature_engineering** → FeatureHistograms grid.
+  - **feature_refine** → VIFBar + CorrHeatmap (refined) + DropLog.
+  - **every LLM-using agent** → AgentThinking sub-section under its
+    reasoning/tool-call detail.
+
+**Tests**
+- `tests/unit/test_llm_trace.py` — base Agent writes the trace when
+  `LLM_TRACE` is unset / `"true"`, skips cleanly when `"false"`; dry-run
+  fallback writes a trace with `dry_run: true`.
+- Visual smoke extended to expand eda + feature_engineering + feature_refine
+  cards.
+
+**Acceptance gate**
+- Every Phase 1/2 agent shows at least one chart in its expanded card.
+- LLM trace section renders in both live and dry-run modes with the right
+  badge; `LLM_TRACE=false` produces no trace files.
+- Bundle < 350 kB gz for `/runs/[id]` with ECharts loaded.
+- Existing 7 + 4 new unit tests pass; visual smoke green.
+
+---
+
+**Status:** planned (2a-1 and 2a-2 ready to start). Mockups in
+`web/app/dev/` are the visual reference until real components land.
 
 ## Phase 3 — Modeling + Results Reasoning
 Model tools (log-log, semi-log, LightGBM+SHAP, PyMC hierarchical), iterative modeling agent that retries on wrong-sign elasticities, results-reasoning agent, model-choice approval gate, elasticity chart UI. Verify log-log recovers truth on synthetic.
