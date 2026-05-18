@@ -1,4 +1,4 @@
-import type { PPGRow, PPGSelectionRow, RunSummary } from "./types";
+import type { PPGRow, PPGSelectionRow, RunStateFull, RunSummary } from "./types";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
@@ -19,7 +19,7 @@ export async function listRuns(): Promise<RunSummary[]> {
   return res.json();
 }
 
-export async function getRun(id: string): Promise<unknown> {
+export async function getRun(id: string): Promise<RunStateFull> {
   const res = await fetch(`${API_BASE}/runs/${id}`, { cache: "no-store" });
   if (!res.ok) throw new Error(`getRun failed: ${res.status}`);
   return res.json();

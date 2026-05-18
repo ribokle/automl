@@ -33,6 +33,7 @@ async def _wait_for_gate(run: RunState, agent_name: str) -> bool:
     if not run.gates.get(agent_name):
         return True
     state = gate_registry.get(run.id, agent_name)
+    prior_status = run.agents[agent_name].status
     run.agents[agent_name].status = AgentStatus.awaiting_approval
     run.status = RunStatus.awaiting_approval
     run.save()
@@ -43,7 +44,8 @@ async def _wait_for_gate(run: RunState, agent_name: str) -> bool:
     )
     await state.event.wait()
     approved = bool(state.approved)
-    run.status = RunStatus.running
+    run.agents[agent_name].status = prior_status if approved else AgentStatus.failed
+    run.status = RunStatus.running if approved else RunStatus.failed
     run.save()
     await bus.publish(
         run.id,
