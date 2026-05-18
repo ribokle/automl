@@ -9,7 +9,10 @@ venv/
 .ruff_cache/
 
 # Project
-runs/
+# Top-level only; do NOT use `runs/` unanchored — it would also match
+# web/app/runs/, which is a real Next.js route segment.
+/runs/
+/web/runs/
 data/*.csv
 !data/.gitkeep
 *.duckdb
