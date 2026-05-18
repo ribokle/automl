@@ -104,6 +104,12 @@ cd web && pnpm install && pnpm dev    # or pnpm build
   Model routing is per-agent in `core/llm/routing.py`.
 - Parse LLM output with `json.loads` inside `try/except` and fall back on
   the deterministic dry-run when the model returns non-JSON.
+- `AnthropicClient` supports four providers, picked automatically by env:
+  `dry_run` (default when no creds), `api` (`ANTHROPIC_API_KEY`),
+  `oauth` (`ANTHROPIC_AUTH_TOKEN` from `claude setup-token` etc.), and
+  `cli` (shells out to the local `claude` binary). `cli` is never picked
+  implicitly — you must set `LLM_PROVIDER=cli`. Integration tests use the
+  `live_llm` marker and only hit the network when `RUN_LIVE_LLM=true`.
 
 ### Orchestration
 

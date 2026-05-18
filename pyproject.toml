@@ -61,3 +61,6 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = [
+    "live_llm: integration test that hits a real LLM provider; opt in with RUN_LIVE_LLM=true",
+]
