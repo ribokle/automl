@@ -60,7 +60,14 @@ agents call it. No new agent in the DAG.
 
 ---
 
-### Phase 2a-1 — Quality story + PPG rationale
+### Phase 2a-1 — Quality story + PPG rationale ✅
+**Status:** complete. End-to-end run on the synthetic panel produces all
+eight chart-ready artefacts; the run page renders coverage heatmap +
+weekly trend + quality panel + anomaly list under ingestion, three
+tabbed scatter views + price-box + full PPG breakdown under PPG mapping,
+and stacked eligibility bars under PPG selection. `/runs/[id]` first-load
+JS ≈ 90 kB gz with ECharts loaded (target was < 250 kB). Full pytest sweep:
+16 passed, including the new graceful-degradation case.
 
 **Backend**
 - `core/data/charts.py` — builders:

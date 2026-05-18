@@ -10,6 +10,9 @@ import {
 } from "@/lib/agent-meta";
 import { approveAgent, artifactUrl, rejectAgent } from "@/lib/api";
 import type { AgentName, AgentState, AgentStatus, RunEvent } from "@/lib/types";
+import { AgentVisuals } from "./AgentVisuals";
+
+const VISUALS_AGENTS: ReadonlySet<AgentName> = new Set(["ingestion", "ppg_mapping", "ppg_selection"] as const);
 
 interface Props {
   runId: string;
@@ -33,7 +36,10 @@ export function AgentCard({ runId, agent, index, status, events, agentState, isL
   const reasoning = agentState?.reasoning;
   const confidence = agentState?.confidence;
   const errorText = agentState?.error ?? events.find((e) => e.type === "agent_failed")?.error;
-  const showDisclosure = Boolean(reasoning || toolCalls.length > 0 || errorText || (agentState?.artifacts?.length ?? 0) > 0);
+  const hasVisuals = VISUALS_AGENTS.has(agent) && (status === "done" || status === "awaiting_approval");
+  const showDisclosure = Boolean(
+    reasoning || toolCalls.length > 0 || errorText || hasVisuals || (agentState?.artifacts?.length ?? 0) > 0,
+  );
 
   async function handleApprove() {
     await approveAgent(runId, agent);
@@ -133,6 +139,7 @@ export function AgentCard({ runId, agent, index, status, events, agentState, isL
             {errorText && (
               <div className="rounded bg-rose-950/40 px-2 py-1.5 text-[11px] text-rose-300">{errorText}</div>
             )}
+            {hasVisuals && <AgentVisuals runId={runId} agent={agent} ready={open} events={events} />}
           </div>
         )}
 

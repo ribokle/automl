@@ -61,3 +61,10 @@ export async function getPPGSelection(runId: string): Promise<PPGSelectionRow[] 
   if (!res.ok) throw new Error(`getPPGSelection failed: ${res.status}`);
   return res.json();
 }
+
+export async function getArtifact<T>(runId: string, name: string): Promise<T | null> {
+  const res = await fetch(`${API_BASE}/artifacts/${runId}/${name}`, { cache: "no-store" });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`getArtifact(${name}) failed: ${res.status}`);
+  return res.json();
+}

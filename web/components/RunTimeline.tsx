@@ -2,7 +2,6 @@
 
 import { AgentCard } from "./AgentCard";
 import { ArtifactGallery } from "./ArtifactGallery";
-import { PPGTable } from "./PPGTable";
 import { RunHeader } from "./RunHeader";
 import { useRunEvents, useRunState } from "@/lib/sse";
 import { AGENT_ORDER, type AgentName, type AgentStatus } from "@/lib/types";
@@ -62,7 +61,6 @@ export function RunTimeline({ runId }: Props) {
           />
         ))}
       </div>
-      <PPGTable runId={runId} events={events} />
       <ArtifactGallery runId={runId} agents={runState?.agents ?? null} />
     </div>
   );
