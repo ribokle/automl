@@ -23,6 +23,8 @@ dependencies = [
     "duckdb-engine>=0.13",
     "holidays>=0.55",
     "python-multipart>=0.0.9",
+    "scikit-learn>=1.5",
+    "scipy>=1.13",
 ]
 
 [project.optional-dependencies]

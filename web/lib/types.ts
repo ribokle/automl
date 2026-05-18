@@ -36,6 +36,7 @@ export interface RunEvent {
   rows?: number;
   checks?: number;
   error?: string;
+  approved?: boolean;
 }
 
 export interface RunSummary {
@@ -44,4 +45,29 @@ export interface RunSummary {
   data_path: string;
   run_dir: string;
   created_at: string;
+}
+
+export interface PPGRow {
+  ppg_id: string;
+  sku: string;
+  brand: string;
+  category: string;
+  pack_size: string;
+  median_price: number;
+  confidence: number;
+  rationale: string;
+  flagged: boolean;
+}
+
+export interface PPGSelectionRow {
+  ppg_id: string;
+  n_skus: number;
+  total_units: number;
+  coverage: number;
+  price_cv: number;
+  promo_weeks_pct: number;
+  score: number;
+  eligible: boolean;
+  reasoning: string;
+  exec_rationale: string;
 }
