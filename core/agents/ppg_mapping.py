@@ -17,6 +17,12 @@ import json
 from pathlib import Path
 
 from core.agents.base import Agent
+from core.data.charts import (
+    ppg_price_box,
+    ppg_scatter_behaviour,
+    ppg_scatter_facet,
+    ppg_scatter_tier,
+)
 from core.orchestrator.state import AgentResult, ArtifactRef, RunState
 from core.ppg.cluster import ClusterParams, cluster_ppgs
 from core.ppg.features import aggregate_sku_features
@@ -134,6 +140,26 @@ class PPGMappingAgent(Agent):
         result.artifacts.append(
             ArtifactRef(path=str(table_path), mime="application/json", agent=self.name, name="ppg_mapping_table.json")
         )
+
+        for chart_name, blob in (
+            ("ppg_scatter_tier.json", ppg_scatter_tier(assignments)),
+            (
+                "ppg_scatter_behaviour.json",
+                await asyncio.to_thread(ppg_scatter_behaviour, assignments, duckdb_path),
+            ),
+            ("ppg_scatter_facet.json", ppg_scatter_facet(assignments)),
+            ("ppg_price_box.json", await asyncio.to_thread(ppg_price_box, assignments, duckdb_path)),
+        ):
+            chart_path = run_dir / chart_name
+            chart_path.write_text(json.dumps(blob, indent=2, default=str))
+            result.artifacts.append(
+                ArtifactRef(
+                    path=str(chart_path),
+                    mime="application/json",
+                    agent=self.name,
+                    name=chart_name,
+                )
+            )
 
         n_ppgs = int(assignments["ppg_id"].nunique())
         flagged = sum(1 for r in rationale_lookup.values() if r.get("flag"))

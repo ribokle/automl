@@ -35,8 +35,45 @@ export interface RunEvent {
   tool?: string;
   rows?: number;
   checks?: number;
+  columns?: number;
+  n_skus?: number;
+  n_ppgs?: number;
   error?: string;
   approved?: boolean;
+}
+
+export interface AgentArtifact {
+  id: string;
+  name: string;
+  path: string;
+  mime: string;
+  agent: string;
+  created_at: string;
+}
+
+export interface AgentState {
+  agent: AgentName;
+  status: AgentStatus;
+  confidence: number;
+  reasoning: string;
+  outputs?: Record<string, unknown> | null;
+  started_at?: string | null;
+  finished_at?: string | null;
+  error?: string | null;
+  tokens_in?: number;
+  tokens_out?: number;
+  cost_usd?: number;
+  artifacts?: AgentArtifact[];
+}
+
+export interface RunStateFull {
+  id: string;
+  status: string;
+  data_path: string;
+  run_dir: string;
+  created_at: string;
+  agents: Record<AgentName, AgentState>;
+  gates: Record<string, boolean>;
 }
 
 export interface RunSummary {

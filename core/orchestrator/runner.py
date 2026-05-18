@@ -8,6 +8,10 @@ three data-preparation agents for real and leaves later stages as stubs.
 from __future__ import annotations
 
 from core.agents.base import Agent, StubAgent
+from core.agents.eda import EDAAgent
+from core.agents.feature_engineering import FeatureEngineeringAgent
+from core.agents.feature_refine import FeatureRefineAgent
+from core.agents.feature_selection import FeatureSelectionAgent
 from core.agents.ingestion import IngestionAgent
 from core.agents.ppg_mapping import PPGMappingAgent
 from core.agents.ppg_selection import PPGSelectionAgent
@@ -20,6 +24,10 @@ REAL_AGENTS: dict[str, type[Agent]] = {
     "ingestion": IngestionAgent,
     "ppg_mapping": PPGMappingAgent,
     "ppg_selection": PPGSelectionAgent,
+    "feature_selection": FeatureSelectionAgent,
+    "eda": EDAAgent,
+    "feature_engineering": FeatureEngineeringAgent,
+    "feature_refine": FeatureRefineAgent,
 }
 
 
@@ -33,6 +41,7 @@ async def _wait_for_gate(run: RunState, agent_name: str) -> bool:
     if not run.gates.get(agent_name):
         return True
     state = gate_registry.get(run.id, agent_name)
+    prior_status = run.agents[agent_name].status
     run.agents[agent_name].status = AgentStatus.awaiting_approval
     run.status = RunStatus.awaiting_approval
     run.save()
@@ -43,7 +52,8 @@ async def _wait_for_gate(run: RunState, agent_name: str) -> bool:
     )
     await state.event.wait()
     approved = bool(state.approved)
-    run.status = RunStatus.running
+    run.agents[agent_name].status = prior_status if approved else AgentStatus.failed
+    run.status = RunStatus.running if approved else RunStatus.failed
     run.save()
     await bus.publish(
         run.id,

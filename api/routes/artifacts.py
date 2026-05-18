@@ -17,7 +17,9 @@ router = APIRouter(prefix="/artifacts", tags=["artifacts"])
 async def get_artifact(run_id: str, path: str) -> FileResponse:
     base = (get_run_dir() / run_id).resolve()
     target = (base / path).resolve()
-    if not str(target).startswith(str(base) + "/") and str(target) != str(base):
+    try:
+        target.relative_to(base)
+    except ValueError:
         raise HTTPException(status_code=400, detail="invalid path")
     if not target.exists() or not target.is_file():
         raise HTTPException(status_code=404, detail="artifact not found")

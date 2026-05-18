@@ -17,6 +17,7 @@ from datetime import datetime
 from pathlib import Path
 
 from core.agents.base import Agent
+from core.data.charts import coverage_grid, quality_results, weekly_trend
 from core.data.dbt_runner import run_dbt_build
 from core.data.ge_runner import run_ge_checks
 from core.data.io import load_csv_to_duckdb
@@ -161,6 +162,22 @@ class IngestionAgent(Agent):
                 name="ingestion_findings.json",
             )
         )
+
+        for chart_name, blob in (
+            ("coverage_grid.json", await asyncio.to_thread(coverage_grid, duckdb_path)),
+            ("weekly_trend.json", await asyncio.to_thread(weekly_trend, duckdb_path)),
+            ("quality_results.json", quality_results(report)),
+        ):
+            chart_path = run_dir / chart_name
+            chart_path.write_text(json.dumps(blob, indent=2, default=str))
+            result.artifacts.append(
+                ArtifactRef(
+                    path=str(chart_path),
+                    mime="application/json",
+                    agent=self.name,
+                    name=chart_name,
+                )
+            )
 
         result.outputs = {
             "row_count": row_count,

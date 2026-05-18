@@ -17,6 +17,7 @@ from pathlib import Path
 import pandas as pd
 
 from core.agents.base import Agent
+from core.data.charts import eligibility_bars
 from core.orchestrator.state import AgentResult, ArtifactRef, RunState
 from core.ppg.score import score_ppgs
 
@@ -80,6 +81,18 @@ class PPGSelectionAgent(Agent):
         out_path.write_text(scores.to_json(orient="records", indent=2))
         result.artifacts.append(
             ArtifactRef(path=str(out_path), mime="application/json", agent=self.name, name="ppg_selection.json")
+        )
+
+        bars_blob = eligibility_bars(scores)
+        bars_path = run_dir / "ppg_eligibility_bars.json"
+        bars_path.write_text(json.dumps(bars_blob, indent=2, default=str))
+        result.artifacts.append(
+            ArtifactRef(
+                path=str(bars_path),
+                mime="application/json",
+                agent=self.name,
+                name="ppg_eligibility_bars.json",
+            )
         )
 
         n_eligible = int(scores["eligible"].sum())

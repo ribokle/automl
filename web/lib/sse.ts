@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { RunEvent } from "./types";
-import { eventsUrl } from "./api";
+import { eventsUrl, getRun } from "./api";
+import type { RunEvent, RunStateFull } from "./types";
 
 export function useRunEvents(runId: string | null): RunEvent[] {
   const [events, setEvents] = useState<RunEvent[]>([]);
@@ -25,4 +25,25 @@ export function useRunEvents(runId: string | null): RunEvent[] {
   }, [runId]);
 
   return events;
+}
+
+export function useRunState(runId: string | null, events: RunEvent[]): RunStateFull | null {
+  const [state, setState] = useState<RunStateFull | null>(null);
+  const trigger = events[events.length - 1]?.ts ?? "";
+  const eventCount = events.length;
+
+  useEffect(() => {
+    if (!runId) return;
+    let cancelled = false;
+    getRun(runId)
+      .then((s) => {
+        if (!cancelled) setState(s);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [runId, trigger, eventCount]);
+
+  return state;
 }

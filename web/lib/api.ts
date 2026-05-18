@@ -1,7 +1,9 @@
-import type { PPGRow, PPGSelectionRow, RunSummary } from "./types";
+import type { PPGRow, PPGSelectionRow, RunStateFull, RunSummary } from "./types";
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
+const isServer = typeof window === "undefined";
+const SERVER_API_BASE =
+  process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000";
+const API_BASE = isServer ? SERVER_API_BASE : "/api";
 
 export async function createRun(dataPath: string, gatesEnabled = false): Promise<RunSummary> {
   const res = await fetch(`${API_BASE}/runs`, {
@@ -19,13 +21,16 @@ export async function listRuns(): Promise<RunSummary[]> {
   return res.json();
 }
 
-export async function getRun(id: string): Promise<unknown> {
+export async function getRun(id: string): Promise<RunStateFull> {
   const res = await fetch(`${API_BASE}/runs/${id}`, { cache: "no-store" });
   if (!res.ok) throw new Error(`getRun failed: ${res.status}`);
   return res.json();
 }
 
 export const eventsUrl = (id: string) => `${API_BASE}/runs/${id}/events`;
+
+export const artifactUrl = (runId: string, name: string) =>
+  `${API_BASE}/artifacts/${runId}/${name}`;
 
 export async function approveAgent(runId: string, agent: string): Promise<void> {
   const res = await fetch(`${API_BASE}/runs/${runId}/approve?agent=${encodeURIComponent(agent)}`, {
@@ -56,5 +61,12 @@ export async function getPPGSelection(runId: string): Promise<PPGSelectionRow[] 
   });
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`getPPGSelection failed: ${res.status}`);
+  return res.json();
+}
+
+export async function getArtifact<T>(runId: string, name: string): Promise<T | null> {
+  const res = await fetch(`${API_BASE}/artifacts/${runId}/${name}`, { cache: "no-store" });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`getArtifact(${name}) failed: ${res.status}`);
   return res.json();
 }
