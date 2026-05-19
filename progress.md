@@ -573,14 +573,45 @@ the SKU's base price ($1.00) sits too far below the competitor reference
 - `optimization_results.json` + `optimization_table.json` +
   `optimization_constraints.json` on disk end-to-end. ✅
 
+### Phase 5a' — Edit-and-re-solve gate loop ✅
+**Status:** complete. The `optimization` gate now supports a third
+resolution alongside approve / reject: **rerun**. The user submits new
+`run.options["optimization"]` overrides via `POST /runs/{id}/rerun`; the
+runner consumes the payload, re-executes the optimization agent with
+the merged options (overlaying onto whatever was passed at run-creation
+time), and re-arms the gate for another review cycle. Loop exits on
+approve (continue downstream) or reject (fail run).
+
+**Backend**
+- `core/orchestrator/gates.py` — `GateState.rerun_payload` channel;
+  `gate_registry.request_rerun()` + `reset()`; `RERUNNABLE_AGENTS`
+  whitelist (currently `{"optimization"}`).
+- `core/orchestrator/runner.py` — `_wait_for_gate` is now a loop;
+  consumes `rerun_payload`, merges into `run.options[agent_name]`,
+  resets the agent's `AgentResult`, re-executes the agent, and
+  re-arms the gate. Emits `agent_rerunning` events for SSE.
+- `api/routes/approvals.py` — `POST /runs/{id}/rerun?agent=...` with
+  a JSON body of constraint overrides. 400 for non-rerunnable agents;
+  409 if the gate was already approved / rejected.
+
+**Frontend**
+- `web/lib/api.ts` — `rerunAgent(runId, agent, options)` helper.
+  Constraint-editor UI lands in 5b alongside the validation card.
+
+**Tests** (11 new; full suite 105 passed)
+- `tests/unit/test_gate_rerun.py` — whitelist contains optimization;
+  non-rerunnable agents get rejected; payload + event semantics; reset
+  clears state; endpoint surface (200 / 400 / 409); end-to-end loop
+  driven by `asyncio.create_task` that observes the agent re-running
+  and final approval exiting the loop; option-merge layering; reject
+  still works without firing a rerun.
+
 ### Phase 5b — Validation + constraint editor UI (pending)
 Adds the validation agent (holdout MAPE/WAPE per PPG, elasticity
 reasonableness checks, rolling-origin CV, stability metrics), plus the
-inline constraint editor + recommendation table components that exercise
-`run.options["optimization"]`. Constraint-elicitation gate (pre-MILP
-pause for user-supplied constraints) is the open scoping question — the
-current post-MILP `optimization` gate works but doesn't let the user set
-the ladder before solving.
+inline constraint editor (calls `rerunAgent` from 5a') + recommendation
+table components built on `optimization_table.json`. Pre-MILP elicitation
+is no longer the open question — the edit-and-re-solve loop covers it.
 
 ## Phase 6 — Insights + Report + Polish
 Insights agent, HTML + PDF report (jinja + weasyprint), cost dashboard, run replay, dark mode, error/retry states.

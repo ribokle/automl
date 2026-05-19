@@ -118,6 +118,14 @@ cd web && pnpm install && pnpm dev    # or pnpm build
   runner pauses after the gated agent and waits on a `GateRegistry` event
   released by `POST /runs/{id}/approve` or `/reject`.
 - Disable gates per-run with `gates_enabled=False` (`--no-gates` on the CLI).
+- Gates in `RERUNNABLE_AGENTS` (currently `optimization`) also support
+  `POST /runs/{id}/rerun` with a JSON body. The runner consumes the
+  payload into `run.options[agent]`, re-executes the agent, then
+  re-arms the gate. This backs the constraint editor: solve with
+  defaults, edit ladder / margin floor / comp gap, re-solve, then
+  approve. Don't add new agents to `RERUNNABLE_AGENTS` without
+  thinking through downstream artefact dependencies — most stages
+  feed every subsequent stage and can't be re-run in isolation.
 - The in-memory `_RUNS` registry and `GateRegistry` are per-process. On
   FastAPI startup, `api.routes.runs.rehydrate_runs` rescans `runs/*/state.json`
   and rehydrates completed/failed runs into the registry. Anything still

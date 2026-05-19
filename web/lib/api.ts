@@ -56,6 +56,19 @@ export async function rejectAgent(runId: string, agent: string): Promise<void> {
   if (!res.ok) throw new Error(`reject failed: ${res.status}`);
 }
 
+export async function rerunAgent(
+  runId: string,
+  agent: string,
+  options: Record<string, unknown>,
+): Promise<void> {
+  const res = await fetch(`${API_BASE}/runs/${runId}/rerun?agent=${encodeURIComponent(agent)}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify(options),
+  });
+  if (!res.ok) throw new Error(`rerun failed: ${res.status}`);
+}
+
 export async function getPPGMappingTable(runId: string): Promise<PPGRow[] | null> {
   const res = await fetch(`${API_BASE}/artifacts/${runId}/ppg_mapping_table.json`, {
     cache: "no-store",

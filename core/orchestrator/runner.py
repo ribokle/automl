@@ -47,30 +47,67 @@ def _build_agent(name: str) -> Agent:
 
 
 async def _wait_for_gate(run: RunState, agent_name: str) -> bool:
-    """Pause until approve/reject, or auto-approve if gates are disabled."""
+    """Pause until approve / reject; loop on rerun signals.
+
+    A `/rerun` resolution merges new ``run.options`` overrides, re-runs the
+    agent, then re-arms the gate so the user can review the new output. The
+    loop exits once the user approves or rejects.
+    """
     if not run.gates.get(agent_name):
         return True
-    state = gate_registry.get(run.id, agent_name)
-    prior_status = run.agents[agent_name].status
-    run.agents[agent_name].status = AgentStatus.awaiting_approval
-    run.status = RunStatus.awaiting_approval
-    run.save()
-    await bus.publish(
-        run.id,
-        run.run_dir,
-        {"type": "approval_required", "agent": agent_name},
-    )
-    await state.event.wait()
-    approved = bool(state.approved)
-    run.agents[agent_name].status = prior_status if approved else AgentStatus.failed
-    run.status = RunStatus.running if approved else RunStatus.failed
-    run.save()
-    await bus.publish(
-        run.id,
-        run.run_dir,
-        {"type": "approval_resolved", "agent": agent_name, "approved": approved},
-    )
-    return approved
+    while True:
+        state = gate_registry.get(run.id, agent_name)
+        prior_status = run.agents[agent_name].status
+        run.agents[agent_name].status = AgentStatus.awaiting_approval
+        run.status = RunStatus.awaiting_approval
+        run.save()
+        await bus.publish(
+            run.id,
+            run.run_dir,
+            {"type": "approval_required", "agent": agent_name},
+        )
+        await state.event.wait()
+
+        if state.rerun_payload is not None:
+            payload = state.rerun_payload
+            run.options = {**run.options, agent_name: {**run.options.get(agent_name, {}), **payload}}
+            run.save()
+            await bus.publish(
+                run.id,
+                run.run_dir,
+                {"type": "agent_rerunning", "agent": agent_name, "options": payload},
+            )
+            gate_registry.reset(run.id, agent_name)
+            run.agents[agent_name].status = AgentStatus.pending
+            run.agents[agent_name].error = None
+            run.agents[agent_name].artifacts = []
+            run.agents[agent_name].outputs = {}
+            try:
+                await _build_agent(agent_name).run(run)
+                run.save()
+            except Exception as exc:  # noqa: BLE001
+                run.agents[agent_name].status = AgentStatus.failed
+                run.agents[agent_name].error = str(exc)
+                run.status = RunStatus.failed
+                run.save()
+                await bus.publish(
+                    run.id,
+                    run.run_dir,
+                    {"type": "agent_failed", "agent": agent_name, "error": str(exc)},
+                )
+                return False
+            continue
+
+        approved = bool(state.approved)
+        run.agents[agent_name].status = prior_status if approved else AgentStatus.failed
+        run.status = RunStatus.running if approved else RunStatus.failed
+        run.save()
+        await bus.publish(
+            run.id,
+            run.run_dir,
+            {"type": "approval_resolved", "agent": agent_name, "approved": approved},
+        )
+        return approved
 
 
 async def execute(run: RunState, gates_enabled: bool = True) -> RunState:
