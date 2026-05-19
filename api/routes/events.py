@@ -4,13 +4,14 @@ from __future__ import annotations
 import asyncio
 import json
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sse_starlette.sse import EventSourceResponse
 
+from api.auth import require_auth
 from api.routes.runs import get_runs_registry
 from core.orchestrator.events import bus
 
-router = APIRouter(prefix="/runs", tags=["events"])
+router = APIRouter(prefix="/runs", tags=["events"], dependencies=[Depends(require_auth)])
 
 
 @router.get("/{run_id}/events")

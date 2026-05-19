@@ -6,11 +6,12 @@ POST /runs/{id}/reject  marks the gate as rejected; the runner then fails the
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
+from api.auth import require_auth
 from core.orchestrator.gates import gate_registry
 
-router = APIRouter(prefix="/runs", tags=["approvals"])
+router = APIRouter(prefix="/runs", tags=["approvals"], dependencies=[Depends(require_auth)])
 
 
 @router.post("/{run_id}/approve")

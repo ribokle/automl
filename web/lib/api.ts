@@ -2,13 +2,21 @@ import type { PPGRow, PPGSelectionRow, RunStateFull, RunSummary } from "./types"
 
 const isServer = typeof window === "undefined";
 const SERVER_API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000";
+  process.env.API_PROXY_TARGET ||
+  process.env.NEXT_PUBLIC_API_BASE ||
+  "http://localhost:8000";
 const API_BASE = isServer ? SERVER_API_BASE : "/api";
+
+function authHeaders(): Record<string, string> {
+  if (!isServer) return {};
+  const token = process.env.API_AUTH_TOKEN;
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
 
 export async function createRun(dataPath: string, gatesEnabled = false): Promise<RunSummary> {
   const res = await fetch(`${API_BASE}/runs`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify({ data_path: dataPath, gates_enabled: gatesEnabled }),
   });
   if (!res.ok) throw new Error(`createRun failed: ${res.status}`);
@@ -16,13 +24,13 @@ export async function createRun(dataPath: string, gatesEnabled = false): Promise
 }
 
 export async function listRuns(): Promise<RunSummary[]> {
-  const res = await fetch(`${API_BASE}/runs`, { cache: "no-store" });
+  const res = await fetch(`${API_BASE}/runs`, { cache: "no-store", headers: authHeaders() });
   if (!res.ok) throw new Error(`listRuns failed: ${res.status}`);
   return res.json();
 }
 
 export async function getRun(id: string): Promise<RunStateFull> {
-  const res = await fetch(`${API_BASE}/runs/${id}`, { cache: "no-store" });
+  const res = await fetch(`${API_BASE}/runs/${id}`, { cache: "no-store", headers: authHeaders() });
   if (!res.ok) throw new Error(`getRun failed: ${res.status}`);
   return res.json();
 }
@@ -35,6 +43,7 @@ export const artifactUrl = (runId: string, name: string) =>
 export async function approveAgent(runId: string, agent: string): Promise<void> {
   const res = await fetch(`${API_BASE}/runs/${runId}/approve?agent=${encodeURIComponent(agent)}`, {
     method: "POST",
+    headers: authHeaders(),
   });
   if (!res.ok) throw new Error(`approve failed: ${res.status}`);
 }
@@ -42,6 +51,7 @@ export async function approveAgent(runId: string, agent: string): Promise<void> 
 export async function rejectAgent(runId: string, agent: string): Promise<void> {
   const res = await fetch(`${API_BASE}/runs/${runId}/reject?agent=${encodeURIComponent(agent)}`, {
     method: "POST",
+    headers: authHeaders(),
   });
   if (!res.ok) throw new Error(`reject failed: ${res.status}`);
 }
@@ -49,6 +59,7 @@ export async function rejectAgent(runId: string, agent: string): Promise<void> {
 export async function getPPGMappingTable(runId: string): Promise<PPGRow[] | null> {
   const res = await fetch(`${API_BASE}/artifacts/${runId}/ppg_mapping_table.json`, {
     cache: "no-store",
+    headers: authHeaders(),
   });
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`getPPGMappingTable failed: ${res.status}`);
@@ -58,6 +69,7 @@ export async function getPPGMappingTable(runId: string): Promise<PPGRow[] | null
 export async function getPPGSelection(runId: string): Promise<PPGSelectionRow[] | null> {
   const res = await fetch(`${API_BASE}/artifacts/${runId}/ppg_selection.json`, {
     cache: "no-store",
+    headers: authHeaders(),
   });
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`getPPGSelection failed: ${res.status}`);
@@ -65,7 +77,10 @@ export async function getPPGSelection(runId: string): Promise<PPGSelectionRow[] 
 }
 
 export async function getArtifact<T>(runId: string, name: string): Promise<T | null> {
-  const res = await fetch(`${API_BASE}/artifacts/${runId}/${name}`, { cache: "no-store" });
+  const res = await fetch(`${API_BASE}/artifacts/${runId}/${name}`, {
+    cache: "no-store",
+    headers: authHeaders(),
+  });
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`getArtifact(${name}) failed: ${res.status}`);
   return res.json();

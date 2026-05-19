@@ -1,20 +1,19 @@
 """Run CRUD endpoints."""
 from __future__ import annotations
 
-import asyncio
 from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 
+from api.auth import require_auth
 from api.deps import get_run_dir
 from api.schemas import CreateRunRequest, RunSummary
 from core.orchestrator.runner import execute
-from core.orchestrator.state import RunState
+from core.orchestrator.state import AgentStatus, RunState, RunStatus
 
-router = APIRouter(prefix="/runs", tags=["runs"])
+router = APIRouter(prefix="/runs", tags=["runs"], dependencies=[Depends(require_auth)])
 
-# In-memory registry for Phase 0; Phase 1 swaps in SQLModel persistence.
 _RUNS: dict[str, RunState] = {}
 
 
@@ -33,7 +32,6 @@ async def create_run(
         run_dir=run_dir_base / "auto",
         options={"label": req.label} if req.label else {},
     )
-    # Place under runs/<id>/ for a real per-run directory.
     state_run_dir = run_dir_base / state.id
     state_run_dir.mkdir(parents=True, exist_ok=True)
     state.run_dir = str(state_run_dir.resolve())
@@ -58,6 +56,7 @@ async def _run_in_background(state: RunState, gates_enabled: bool) -> None:
 
 @router.get("", response_model=list[RunSummary])
 async def list_runs() -> list[RunSummary]:
+    runs = sorted(_RUNS.values(), key=lambda r: r.created_at, reverse=True)
     return [
         RunSummary(
             id=r.id,
@@ -66,7 +65,7 @@ async def list_runs() -> list[RunSummary]:
             run_dir=r.run_dir,
             created_at=r.created_at.isoformat(),
         )
-        for r in _RUNS.values()
+        for r in runs
     ]
 
 
@@ -79,3 +78,35 @@ async def get_run(run_id: str) -> dict[str, Any]:
 
 def get_runs_registry() -> dict[str, RunState]:
     return _RUNS
+
+
+def rehydrate_runs(run_dir_base: Path) -> dict[str, int]:
+    """Reload `state.json` for every run on disk, marking orphans as failed.
+
+    Returns a small counters dict so the caller can log the recovery. Any run
+    whose persisted status is `running` or `awaiting_approval` is downgraded
+    to `failed` with reason `process_restarted` — the orchestrator task is
+    gone with the previous process and cannot be resumed without a job queue.
+    """
+    loaded = 0
+    orphaned = 0
+    if not run_dir_base.exists():
+        return {"loaded": 0, "orphaned": 0}
+
+    for state_file in run_dir_base.glob("*/state.json"):
+        try:
+            state = RunState.load(state_file.parent)
+        except Exception:
+            continue
+        if state.status in (RunStatus.running, RunStatus.awaiting_approval):
+            state.status = RunStatus.failed
+            for agent_result in state.agents.values():
+                if agent_result.status in (AgentStatus.running, AgentStatus.awaiting_approval):
+                    agent_result.status = AgentStatus.failed
+                    agent_result.error = "process_restarted"
+            state.options = {**state.options, "recovery_reason": "process_restarted"}
+            state.save()
+            orphaned += 1
+        _RUNS[state.id] = state
+        loaded += 1
+    return {"loaded": loaded, "orphaned": orphaned}
