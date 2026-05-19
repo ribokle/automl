@@ -26,7 +26,10 @@ def _load_panel(duckdb_path: Path, table: str) -> pd.DataFrame:
         con.close()
 
 
-def _run_with_great_expectations(df: pd.DataFrame) -> list[CheckResult]:
+def _run_with_great_expectations(
+    df: pd.DataFrame,
+    baseline_path: Path | None = None,
+) -> list[CheckResult]:
     try:
         import great_expectations as gx
         from great_expectations.core.expectation_suite import ExpectationSuite
@@ -48,7 +51,7 @@ def _run_with_great_expectations(df: pd.DataFrame) -> list[CheckResult]:
     batch = batch_def.get_batch(batch_parameters={"dataframe": df})
 
     results: list[CheckResult] = []
-    for suite_name, expectations in all_expectations().items():
+    for suite_name, expectations in all_expectations(baseline_path=baseline_path).items():
         suite = ExpectationSuite(name=suite_name)
         for exp in expectations:
             suite.add_expectation(exp)
@@ -68,9 +71,13 @@ def _run_with_great_expectations(df: pd.DataFrame) -> list[CheckResult]:
     return results
 
 
-def run_ge_checks(duckdb_path: Path, table: str = "panel") -> list[CheckResult]:
+def run_ge_checks(
+    duckdb_path: Path,
+    table: str = "panel",
+    baseline_path: Path | None = None,
+) -> list[CheckResult]:
     df = _load_panel(duckdb_path, table)
-    return _run_with_great_expectations(df)
+    return _run_with_great_expectations(df, baseline_path=baseline_path)
 
 
 def capture_baseline(duckdb_path: Path, out_json: Path, table: str = "panel") -> dict[str, Any]:

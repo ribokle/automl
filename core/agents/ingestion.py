@@ -92,7 +92,9 @@ class IngestionAgent(Agent):
         await self.emit(run, "tool_called", {"tool": "dbt_build", "checks": len(dbt_results)})
 
         try:
-            ge_results = await asyncio.to_thread(run_ge_checks, duckdb_path, "panel")
+            _baseline = Path("core/data/baselines/synthetic.json")
+            _baseline_path = _baseline if _baseline.exists() else None
+            ge_results = await asyncio.to_thread(run_ge_checks, duckdb_path, "panel", _baseline_path)
             await self.emit(run, "tool_called", {"tool": "ge_checks", "checks": len(ge_results)})
         except Exception as exc:
             ge_results = []

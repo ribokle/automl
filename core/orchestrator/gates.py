@@ -83,9 +83,14 @@ class GateRegistry:
         return True
 
     def reset(self, run_id: str, agent: str) -> None:
-        """Re-arm the gate after a rerun: fresh event, clear payload."""
+        """Re-arm the gate after a rerun: clear payload and re-arm the shared event.
+
+        Use .clear() rather than replacing the Event so any task already holding
+        a reference to the old Event object will still block correctly on the
+        next approval cycle.
+        """
         state = self.get(run_id, agent)
-        state.event = asyncio.Event()
+        state.event.clear()
         state.rerun_payload = None
         state.approved = None
 

@@ -65,7 +65,7 @@ export function FittedVsActual({ data, height = 280 }: Props) {
   const lineLo = Math.max(0, lo - pad);
   const lineHi = hi + pad;
 
-  const r = corr(data.observed_units, data.predicted_units);
+  const r = corr(data.observed_log, data.predicted_log);
 
   const option = {
     grid: { left: 56, right: 24, top: 32, bottom: 40 },
@@ -133,7 +133,7 @@ export function FittedVsActual({ data, height = 280 }: Props) {
       },
     ],
     title: {
-      text: Number.isFinite(r) ? `r = ${r.toFixed(3)}` : "",
+      text: Number.isFinite(r) ? `r (log) = ${r.toFixed(3)}` : "",
       textStyle: { color: "#94a3b8", fontSize: 10, fontWeight: "normal" },
       right: 8,
       top: 4,

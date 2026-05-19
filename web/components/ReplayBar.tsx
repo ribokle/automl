@@ -108,9 +108,8 @@ export function ReplayBar({ events, scrubTs, onScrub }: Props) {
           if (prev !== null) onScrub(new Date(prev).toISOString());
         } else {
           const next = ordered.find(({ t }) => t > currentMs + 1)?.t ?? null;
-          if (next === null) onScrub(null);
-          else if (next >= tLast!) onScrub(null);
-          else onScrub(new Date(next).toISOString());
+          // Clamp to tLast rather than jumping to live — user must click "live" explicitly.
+          if (next !== null) onScrub(new Date(Math.min(next, tLast!)).toISOString());
         }
       }
     }

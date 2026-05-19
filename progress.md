@@ -1033,3 +1033,22 @@ cards.
   `/runs/[id]`. ✅
 - Each of the five "more graphs" backlog items renders on its
   respective agent card. ✅
+
+---
+
+## Post-review fixes
+
+### P1 — Correctness & contract ✅
+**Status:** complete.
+- `core/data/expectations.py` — added `panel_drift_suite` and `panel_anomaly_suite`
+  (completing all five suites described in the architecture docs); drift suite
+  reads `core/data/baselines/synthetic.json` and skips gracefully when absent.
+- `core/orchestrator/gates.py` — `reset()` now calls `state.event.clear()`
+  instead of replacing the Event, eliminating the race where a concurrent
+  awaiter on the old object would be orphaned.
+- `web/components/charts/FittedVsActual.tsx` — Pearson `r` is now computed on
+  `observed_log` / `predicted_log` (log space) to match `test_wape`; labelled
+  `r (log)` so the scale is explicit.
+- `web/components/ReplayBar.tsx` — right-arrow at end-of-stream now clamps to
+  `tLast` instead of jumping to live; user must click the "live" button
+  explicitly.
