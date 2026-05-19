@@ -58,7 +58,7 @@ def _cell_metrics_for(
     )
 
 
-VIOLATION_PENALTY = 1e6  # large enough to dominate any per-cell objective value
+VIOLATION_PENALTY = 1e6  # must dominate per-cell revenue (~1e3 max); revisit if revenue scale changes
 
 
 @dataclass

@@ -143,6 +143,34 @@ def test_milp_relaxes_when_no_cell_feasible() -> None:
     assert any(v < 0 for v in res.chosen_slacks.values())
 
 
+def test_milp_margin_floor_binding_when_tight() -> None:
+    """When the margin floor is set just below the cheapest feasible rung,
+    that rung's margin_floor slack should be near zero (constraint is binding)."""
+    # base_price=3.0, cog_pct=0.55 (default), margin_floor_pct=0.30 →
+    # floor_price = (0.55 + 0.30) * 3.0 = 2.55 = 0.85 * 3.0.
+    # Rung 0.85 exactly meets the floor → slack ≈ 0; all higher rungs have
+    # positive slack.  Revenue-maximising choice (ε = -2) is the lowest
+    # allowed rung, so 0.85 must be selected and its margin_floor slack ≈ 0.
+    inp = PPGOptInputs(
+        ppg_id="P",
+        model_kind="loglog_ols",
+        coefficients=COEFS_ELASTIC,
+        base_price=3.0,
+        context={"log_distribution_acv": math.log(85)},
+    )
+    c = OptimizationConstraints(
+        price_ladder=(0.85, 0.90, 0.95, 1.00, 1.05, 1.10),
+        margin_floor_pct=0.30,  # floor = $2.55 = exactly the 0.85 rung
+        comp_gap_pct=1.0,
+        objective="revenue",
+        cog_pct=0.55,
+    )
+    res = solve_milp(inp, c)
+    assert res.feasible_strict is True
+    assert res.price_multiplier == pytest.approx(0.85, abs=1e-9)
+    assert res.chosen_slacks["margin_floor"] == pytest.approx(0.0, abs=1e-6)
+
+
 def test_milp_picks_higher_price_for_inelastic_margin() -> None:
     """ε = -0.5 (inelastic), margin objective: optimal multiplier should
     sit at the upper bound of the ladder within the move guardrail."""

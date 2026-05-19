@@ -104,6 +104,7 @@ export function RunSidebar({ activeRunId }: Props) {
                         STATUS_DOT[r.status] ?? STATUS_DOT.pending
                       }`}
                       title={r.status}
+                      aria-label={`${r.status} run`}
                     />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-baseline justify-between gap-2">

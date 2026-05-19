@@ -81,7 +81,31 @@ def run_ge_checks(
 
 
 def capture_baseline(duckdb_path: Path, out_json: Path, table: str = "panel") -> dict[str, Any]:
-    """Write a minimal baseline distribution snapshot for future drift checks."""
+    """Write a baseline distribution snapshot for future drift checks.
+
+    Output JSON shape::
+
+        {
+          "row_count": <int>,
+          "columns": {
+            "<col>": {
+              "mean": <float>,
+              "std":  <float>,
+              "q25":  <float>,
+              "q50":  <float>,
+              "q75":  <float>,
+              "q95":  <float>
+            },
+            ...
+          }
+        }
+
+    Captured for columns: ``price``, ``units``, ``distribution_acv``.
+    On subsequent ingestions ``run_ge_checks(baseline_path=...)`` reads this
+    file to build the ``panel_drift_suite`` expectations (±40% of each stat).
+    First-run behaviour: if no baseline exists, the drift suite returns an
+    empty list and is silently skipped.
+    """
     import json
 
     df = _load_panel(duckdb_path, table)

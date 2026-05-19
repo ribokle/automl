@@ -146,7 +146,7 @@ export function ResultsTable<T>({
                   <span className="inline-flex items-center gap-1">
                     {c.label}
                     {!c.unsortable && (
-                      <span className={`text-[8px] ${isSorted ? "text-slate-300" : "text-slate-700"}`}>
+                      <span aria-hidden="true" className={`text-[8px] ${isSorted ? "text-slate-300" : "text-slate-700"}`}>
                         {isSorted ? (sort?.dir === "asc" ? "▲" : "▼") : "↕"}
                       </span>
                     )}
