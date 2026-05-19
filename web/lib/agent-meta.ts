@@ -155,6 +155,15 @@ export function summariseOutputs(
           ? `${o.n_relaxed} relaxed`
           : "",
       ].filter(Boolean);
+    case "validation":
+      return [
+        typeof o.n_validated === "number" ? `${o.n_validated} PPGs validated` : "",
+        typeof o.n_folds === "number" ? `${o.n_folds}-fold rolling CV` : "",
+        typeof o.n_pass === "number" && typeof o.n_validated === "number"
+          ? `${o.n_pass}/${o.n_validated} pass`
+          : "",
+        typeof o.n_fail === "number" && o.n_fail > 0 ? `${o.n_fail} fail` : "",
+      ].filter(Boolean);
     default:
       return Object.entries(o)
         .slice(0, 4)

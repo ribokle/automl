@@ -20,6 +20,7 @@ from core.agents.ppg_mapping import PPGMappingAgent
 from core.agents.ppg_selection import PPGSelectionAgent
 from core.agents.results_reasoning import ResultsReasoningAgent
 from core.agents.simulation import SimulationAgent
+from core.agents.validation import ValidationAgent
 from core.orchestrator.events import bus
 from core.orchestrator.gates import DEFAULT_GATES, gate_registry
 from core.orchestrator.state import AGENT_ORDER, AgentStatus, RunState, RunStatus
@@ -38,6 +39,7 @@ REAL_AGENTS: dict[str, type[Agent]] = {
     "decomposition": DecompositionAgent,
     "simulation": SimulationAgent,
     "optimization": OptimizationAgent,
+    "validation": ValidationAgent,
 }
 
 

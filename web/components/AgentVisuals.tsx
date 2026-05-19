@@ -21,6 +21,7 @@ import { PPGTable } from "./PPGTable";
 import { CandidatesTable, type CandidatesRow } from "./tables/CandidatesTable";
 import { DataPreview, type ProfileBlob } from "./tables/DataPreview";
 import { DropLog, KeptList, type DropLogData } from "./tables/DropLog";
+import { RecommendationTable, type RecommendationRow } from "./tables/RecommendationTable";
 import { SchemaTable } from "./tables/SchemaTable";
 import { QualityPanel, type QualityData } from "./tables/QualityPanel";
 import { AnomalyTable, type FindingsBlob } from "./tables/AnomalyTable";
@@ -28,6 +29,8 @@ import {
   TargetRelationship,
   type TargetRelationshipRow,
 } from "./tables/TargetRelationship";
+import { ValidationTable, type ValidationRow } from "./tables/ValidationTable";
+import { ConstraintEditor, type ConstraintsBlob } from "./ConstraintEditor";
 import type { AgentName, RunEvent } from "@/lib/types";
 
 interface Props {
@@ -81,6 +84,10 @@ export function AgentVisuals(props: Props) {
       return <FeatureRefineVisuals {...props} />;
     case "modeling":
       return <ModelingVisuals {...props} />;
+    case "optimization":
+      return <OptimizationVisuals {...props} />;
+    case "validation":
+      return <ValidationVisuals {...props} />;
     default:
       return null;
   }
@@ -320,6 +327,39 @@ function ModelingVisuals({ runId, ready }: Props) {
           <SHAPBar data={selectedShap.shap} />
         </Section>
       )}
+    </div>
+  );
+}
+
+function OptimizationVisuals({ runId, ready }: Props) {
+  const rows = useArtifact<RecommendationRow[]>(runId, "optimization_table.json", ready);
+  const constraints = useArtifact<ConstraintsBlob>(runId, "optimization_constraints.json", ready);
+  if (!rows && !constraints) return null;
+  const recos = Array.isArray(rows) ? rows : [];
+  const c = constraints && !("missing_columns" in constraints) ? constraints : null;
+  return (
+    <div className="mt-4 space-y-5 border-t border-slate-800 pt-4">
+      <Section title={`Recommendations · ${recos.length} PPGs · objective=${c?.objective ?? "—"}`}>
+        <RecommendationTable rows={recos} />
+      </Section>
+      {c && (
+        <Section title="Constraint editor · solve with defaults, edit, re-solve, approve">
+          <ConstraintEditor runId={runId} current={c} />
+        </Section>
+      )}
+    </div>
+  );
+}
+
+function ValidationVisuals({ runId, ready }: Props) {
+  const rows = useArtifact<ValidationRow[]>(runId, "validation_table.json", ready);
+  if (!rows) return null;
+  const list = Array.isArray(rows) ? rows : [];
+  return (
+    <div className="mt-4 border-t border-slate-800 pt-4">
+      <Section title={`Rolling-origin CV verdicts · ${list.length} PPGs`}>
+        <ValidationTable rows={list} />
+      </Section>
     </div>
   );
 }

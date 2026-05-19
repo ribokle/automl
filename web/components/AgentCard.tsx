@@ -21,6 +21,8 @@ const VISUALS_AGENTS: ReadonlySet<AgentName> = new Set([
   "feature_engineering",
   "feature_refine",
   "modeling",
+  "optimization",
+  "validation",
 ] as const);
 
 const LLM_AGENTS: ReadonlySet<AgentName> = new Set([
@@ -32,6 +34,8 @@ const LLM_AGENTS: ReadonlySet<AgentName> = new Set([
   "feature_engineering",
   "feature_refine",
   "modeling",
+  "optimization",
+  "validation",
 ] as const);
 
 interface Props {
@@ -50,6 +54,12 @@ export function AgentCard({ runId, agent, index, status, events, agentState, isL
   const style = STATUS_STYLE[status];
 
   const toolCalls = events.filter((e) => e.type === "tool_called");
+  const lastRerun = [...events].reverse().find((e) => e.type === "agent_rerunning");
+  const lastFinished = [...events].reverse().find((e) => e.type === "agent_finished");
+  const rerunning =
+    lastRerun !== undefined &&
+    (lastFinished === undefined ||
+      Date.parse(lastRerun.ts) > Date.parse(lastFinished.ts));
   const outputs = agentState?.outputs ?? events.find((e) => e.type === "agent_finished")?.outputs ?? null;
   const summary = summariseOutputs(agent, outputs);
   const duration = formatDuration(agentState?.started_at, agentState?.finished_at);
@@ -166,7 +176,13 @@ export function AgentCard({ runId, agent, index, status, events, agentState, isL
           </div>
         )}
 
-        {status === "awaiting_approval" && (
+        {rerunning && (
+          <div className="border-t border-amber-500/30 bg-amber-500/5 px-4 py-2 text-xs text-amber-200">
+            Re-solving with new constraints…
+          </div>
+        )}
+
+        {status === "awaiting_approval" && !rerunning && (
           <div className="flex items-center justify-between gap-2 border-t border-purple-500/30 bg-purple-500/5 px-4 py-2">
             <span className="text-xs text-purple-200">Approval required to proceed</span>
             <div className="flex gap-2">

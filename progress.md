@@ -495,10 +495,10 @@ Phase 3b, or refit in the agent). Also covers the inline stacked-bar
 + contour-heatmap UI charts called out in "Open follow-ups → More
 graphs (Later)".
 
-## Phase 5 — Optimization + Validation
+## Phase 5 — Optimization + Validation ✅
 Opt tools, constraint-elicitation gate, scipy continuous warm start → PuLP MILP with ladder/margin-floor/comp-gap, validation agent (holdout WAPE, elasticity reasonableness, stability), constraint editor + recommendation table UI.
 
-**Status:** in progress (5a complete; 5b pending).
+**Status:** complete (5a + 5a' + 5b shipped).
 
 ### Phase 5a — Constrained price optimisation ✅
 **Status:** complete. End-to-end run on the synthetic panel optimises every
@@ -606,12 +606,76 @@ approve (continue downstream) or reject (fail run).
   and final approval exiting the loop; option-merge layering; reject
   still works without firing a rerun.
 
-### Phase 5b — Validation + constraint editor UI (pending)
-Adds the validation agent (holdout MAPE/WAPE per PPG, elasticity
-reasonableness checks, rolling-origin CV, stability metrics), plus the
-inline constraint editor (calls `rerunAgent` from 5a') + recommendation
-table components built on `optimization_table.json`. Pre-MILP elicitation
-is no longer the open question — the edit-and-re-solve loop covers it.
+### Phase 5b — Validation + constraint editor UI ✅
+**Status:** complete. Rolling-origin CV-backed validation agent ships
+end-to-end; the optimization AgentCard now exposes a recommendation
+table + an inline constraint editor that exercises the 5a' rerun loop;
+the validation AgentCard renders per-PPG verdicts with sign-stability /
+WAPE / elasticity CV chips.
+
+On the synthetic panel: 2/4 OLS-winning PPGs pass all checks, 2 fail
+(one on `elasticity_cv` = 0.76, one on 75% sign-stability + CV = 1.51
+— both real signals that the model's per-PPG elasticity wanders across
+time windows even though point-WAPE looks fine).
+
+**Backend**
+- `core/validation/rolling.py` — expanding-window fold builder + per-fold
+  refit of the winning OLS family. Returns elasticity, sign flag, R²,
+  train + test WAPE per fold.
+- `core/validation/checks.py` — `evaluate_ppg()` aggregates fold metrics
+  into a pass / warn / fail verdict against four rules: sign stability
+  ≥ 0.75 (pass) / 0.50 (warn); mean hold-out WAPE ≤ 0.20 / 0.30;
+  elasticity CV ≤ 0.4 / 0.7; |mean ε| inside [0.3, 6.0].
+- `core/agents/validation.py` — orchestrates per-PPG rolling CV, honours
+  `run.options["validation"].n_folds` (default 4). Writes:
+  - `validation_report.json` — full per-PPG verdict + per-fold detail +
+    thresholds.
+  - `validation_table.json` — flat one-row-per-PPG rows for the UI.
+- `core/orchestrator/runner.py` — registers `ValidationAgent`.
+
+**Frontend**
+- `web/components/tables/RecommendationTable.tsx` — optimization output
+  table: base + recommended price, %Δ chip (green up / amber down),
+  units / revenue / margin, feasibility status (`feasible` /
+  `relaxed`).
+- `web/components/tables/ValidationTable.tsx` — validation verdict
+  table: pass/warn/fail pill per PPG, sign stability %, mean WAPE, ε
+  mean & CV, fold count.
+- `web/components/ConstraintEditor.tsx` — inline form for objective,
+  price ladder, margin floor, comp gap, max move; calls `rerunAgent()`
+  from 5a' and the runner re-solves + re-arms the gate.
+- `web/components/AgentVisuals.tsx` — new `OptimizationVisuals`
+  (recommendation table + constraint editor) + `ValidationVisuals`
+  (verdict table).
+- `web/components/AgentCard.tsx` — `agent_rerunning` SSE event renders
+  a "Re-solving with new constraints…" amber banner that suppresses
+  the approve / reject buttons while the rerun is in flight.
+- `web/lib/agent-meta.ts` — validation card chips: `n_validated`,
+  `n_folds`, `n_pass`/`n_validated`, `n_fail`.
+
+**Tests** (12 new; full suite 117 passed)
+- `tests/unit/test_validation.py` — fold builder returns N folds with
+  expanding train + non-overlapping test windows; empty when frame too
+  short; train strictly precedes test in calendar order; per-fold
+  refit recovers correct sign on a clean DGP; verdict aggregator emits
+  pass / warn / fail under each rule (sign flip, high WAPE, high CV,
+  no folds); validation agent writes both artefacts; LightGBM winners
+  skipped; `run.options["validation"].n_folds` override respected.
+
+**Verification**
+- End-to-end on synthetic: validation agent runs after optimization,
+  surfaces 2 stable PPGs and 2 unstable ones; `validation_report.json`
+  + `validation_table.json` on disk.
+- `pnpm build` clean; `/runs/[id]` first-load JS still around 322 kB
+  raw (under the 350 kB gz target after compression).
+
+**Acceptance gate**
+- Holdout WAPE reported per PPG. ✅
+- Rolling-origin CV with ≥3 folds per PPG. ✅
+- Elasticity stability surfaced as CV across folds. ✅
+- Sign-recovery rate surfaced as % of folds with correct sign. ✅
+- Constraint editor wires into the rerun loop; UI shows re-solving
+  state. ✅
 
 ## Phase 6 — Insights + Report + Polish
 Insights agent, HTML + PDF report (jinja + weasyprint), cost dashboard, run replay, dark mode, error/retry states.

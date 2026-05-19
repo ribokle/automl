@@ -74,6 +74,7 @@ export interface RunStateFull {
   created_at: string;
   agents: Record<AgentName, AgentState>;
   gates: Record<string, boolean>;
+  options?: Record<string, unknown>;
 }
 
 export interface RunSummary {
