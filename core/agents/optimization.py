@@ -286,6 +286,7 @@ def _optimise_one(
             "binding_violations": milp.binding_violations,
             "n_cells_considered": milp.n_cells_considered,
             "n_cells_feasible": milp.n_cells_feasible,
+            "chosen_slacks": milp.chosen_slacks,
         },
     }
 

@@ -23,6 +23,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import numpy as np
 import pandas as pd
 
 from core.models.lightgbm_model import fit_lightgbm
@@ -105,4 +106,19 @@ def fit_one_fold(
         "r_squared": float(fit.r_squared),
         "train_wape": float(fit.diagnostics.get("train_wape", float("nan"))),
         "test_wape": float(fit.diagnostics.get("test_wape", float("nan"))),
+        "test_residuals_log": _residuals_log(fit, fold.test),
     }
+
+
+def _residuals_log(fit, test: pd.DataFrame) -> list[float]:
+    """``observed_log - predicted_log`` for the fold's hold-out window.
+
+    Returns an empty list when the fit didn't capture a comparable
+    prediction (the OLS/LGBM fitters all stash ``diagnostics['test_residuals_log']``
+    when a test frame is provided; this helper just normalises the type).
+    """
+    raw = fit.diagnostics.get("test_residuals_log") if fit.diagnostics else None
+    if raw is None:
+        return []
+    arr = np.asarray(raw, dtype=float)
+    return [float(v) for v in arr[np.isfinite(arr)]]

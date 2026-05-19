@@ -157,7 +157,7 @@ def test_validation_agent_writes_artifacts(tmp_path: Path, monkeypatch) -> None:
     asyncio.run(ValidationAgent().run(state))
 
     run_dir = Path(state.run_dir)
-    for name in ("validation_report.json", "validation_table.json"):
+    for name in ("validation_report.json", "validation_table.json", "validation_residuals.json"):
         assert (run_dir / name).exists()
 
     table = json.loads((run_dir / "validation_table.json").read_text())
@@ -168,6 +168,13 @@ def test_validation_agent_writes_artifacts(tmp_path: Path, monkeypatch) -> None:
     report = json.loads((run_dir / "validation_report.json").read_text())
     assert "thresholds" in report
     assert report["per_ppg"][0]["n_folds"] >= 2
+
+    residuals = json.loads((run_dir / "validation_residuals.json").read_text())
+    assert len(residuals) == 1
+    assert residuals[0]["ppg_id"] == "PPG_V"
+    assert len(residuals[0]["residuals_log"]) > 0
+    assert all(isinstance(v, float) for v in residuals[0]["residuals_log"])
+    assert sum(f["n"] for f in residuals[0]["folds"]) == len(residuals[0]["residuals_log"])
 
 
 def test_validation_agent_handles_lightgbm(tmp_path: Path, monkeypatch) -> None:

@@ -25,7 +25,7 @@ floor by 1.2pp to keep PPG_03 within the comp gap").
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import pulp
 
@@ -77,6 +77,7 @@ class MILPResult:
     binding_violations: list[dict]
     n_cells_considered: int
     n_cells_feasible: int
+    chosen_slacks: dict[str, float] = field(default_factory=dict)
 
 
 def _cell_feasibility(
@@ -168,6 +169,7 @@ def _solve_strict(
             binding_violations=[],
             n_cells_considered=len(cells),
             n_cells_feasible=len(feasible),
+            chosen_slacks={k: float(v) for k, v in cell["slacks"].items()},
         ),
         feasible,
     )
@@ -227,6 +229,7 @@ def _solve_relaxed(
         binding_violations=violations,
         n_cells_considered=len(cells),
         n_cells_feasible=0,
+        chosen_slacks={k: float(v) for k, v in cell["slacks"].items()},
     )
 
 

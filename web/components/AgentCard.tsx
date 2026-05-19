@@ -21,6 +21,8 @@ const VISUALS_AGENTS: ReadonlySet<AgentName> = new Set([
   "feature_engineering",
   "feature_refine",
   "modeling",
+  "decomposition",
+  "simulation",
   "optimization",
   "validation",
   "insights",

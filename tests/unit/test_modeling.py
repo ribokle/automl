@@ -234,3 +234,15 @@ def test_modeling_agent_writes_per_ppg_artifacts(
         lo, hi = sorted([entry["point"], posterior["population_mean"]])
         assert lo - 1e-9 <= entry["shrunk_mean"] <= hi + 1e-9
         assert entry["ci_low"] <= entry["shrunk_mean"] <= entry["ci_high"]
+
+    fva = json.loads((run_dir / "fitted_vs_actual.json").read_text())
+    assert {r["ppg_id"] for r in fva} == fit_ppg_ids
+    for entry in fva:
+        n = len(entry["observed_units"])
+        assert n > 0
+        assert len(entry["predicted_units"]) == n
+        assert len(entry["observed_log"]) == n
+        assert len(entry["predicted_log"]) == n
+        assert len(entry["split"]) == n
+        assert set(entry["split"]).issubset({"train", "test"})
+        assert entry["n_train"] + entry["n_test"] == n

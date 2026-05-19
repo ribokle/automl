@@ -25,6 +25,7 @@ import json
 import math
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 from core.agents.base import Agent
@@ -34,6 +35,7 @@ from core.models.bayes_hier import shrink, to_payload
 from core.models.lightgbm_model import fit_lightgbm
 from core.models.loglog_ols import fit_loglog
 from core.models.metrics import chronological_split
+from core.models.predictor import build_predictor
 from core.models.semilog_ols import fit_semilog
 from core.orchestrator.state import AgentResult, ArtifactRef, RunState
 
@@ -192,6 +194,18 @@ class ModelingAgent(Agent):
             )
         )
 
+        fva = _collect_fitted_vs_actual(per_ppg, feats, controls)
+        fva_path = run_dir / "fitted_vs_actual.json"
+        fva_path.write_text(json.dumps(fva, indent=2, default=float))
+        result.artifacts.append(
+            ArtifactRef(
+                path=str(fva_path),
+                mime="application/json",
+                agent=self.name,
+                name=fva_path.name,
+            )
+        )
+
         results_blob = {
             "controls_used": controls,
             "per_ppg": per_ppg,
@@ -316,6 +330,53 @@ def _compute_hierarchical(per_ppg: list[dict]) -> dict:
             (r["ppg_id"], float(winner["own_elasticity"]), float(winner["std_err"]))
         )
     return to_payload(shrink(triples))
+
+
+def _collect_fitted_vs_actual(
+    per_ppg: list[dict], feats: pd.DataFrame, controls: list[str]
+) -> list[dict]:
+    """Predict on each PPG's full feature frame using its winning model.
+
+    Emits one row per PPG containing parallel arrays of observed log_units,
+    predicted log_units, and a train/test split flag aligned to the same
+    chronological 80/20 the modelling agent used. The UI renders this as
+    a fitted-vs-actual scatter with train/test colouring.
+    """
+    rows: list[dict] = []
+    for row in per_ppg:
+        winner = row.get("winner")
+        if not winner or row["winner_model"] == "skipped":
+            continue
+        ppg_id = row["ppg_id"]
+        slice_ = feats[feats["ppg_id"] == ppg_id].sort_values("week_start").reset_index(drop=True)
+        if slice_.empty or "log_units" not in slice_.columns:
+            continue
+        try:
+            predictor = build_predictor(row, slice_, controls, test_ratio=0.2)
+            pred_log = predictor.predict_log(slice_)
+        except Exception:
+            continue
+        observed_log = slice_["log_units"].astype(float).to_numpy()
+        n_train = int(row.get("n_train") or len(slice_))
+        split = ["train"] * n_train + ["test"] * max(0, len(slice_) - n_train)
+        split = split[: len(slice_)]
+        rows.append(
+            {
+                "ppg_id": ppg_id,
+                "model": row["winner_model"],
+                "weeks": slice_["week_start"].astype(str).tolist()
+                if "week_start" in slice_.columns
+                else [str(i) for i in range(len(slice_))],
+                "observed_log": observed_log.tolist(),
+                "predicted_log": [float(v) for v in pred_log],
+                "observed_units": [float(v) for v in np.exp(observed_log)],
+                "predicted_units": [float(v) for v in np.exp(pred_log)],
+                "split": split,
+                "n_train": n_train,
+                "n_test": int(row.get("n_test") or max(0, len(slice_) - n_train)),
+            }
+        )
+    return rows
 
 
 def _collect_shap(per_ppg: list[dict]) -> list[dict]:

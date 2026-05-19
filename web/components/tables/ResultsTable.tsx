@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type ReactNode } from "react";
+import { Fragment, useMemo, useState, type ReactNode } from "react";
 
 export type Severity = "pass" | "warn" | "fail" | "info" | "neutral";
 
@@ -41,6 +41,13 @@ export interface ResultsTableProps<T> {
   stickyFirst?: boolean;
   /** Compact density. Default true. */
   compact?: boolean;
+  /** Expandable rows: adds a leading ▸/▾ column; expansion content
+   *  rendered in a row below the parent row. */
+  expandable?: {
+    render: (row: T) => ReactNode;
+    /** Initial expanded keys (one-time). */
+    initialExpanded?: string[];
+  };
 }
 
 const ROW_SEVERITY: Record<Severity, string> = {
@@ -70,10 +77,22 @@ export function ResultsTable<T>({
   rowSeverity,
   stickyFirst = true,
   compact = true,
+  expandable,
 }: ResultsTableProps<T>) {
   const [sort, setSort] = useState<{ key: string; dir: "asc" | "desc" } | null>(
     defaultSort ?? null,
   );
+  const [expanded, setExpanded] = useState<Set<string>>(
+    () => new Set(expandable?.initialExpanded ?? []),
+  );
+  function toggleExpand(key: string) {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
 
   const sorted = useMemo(() => {
     if (!sort) return rows;
@@ -97,12 +116,14 @@ export function ResultsTable<T>({
   }
 
   const padding = compact ? "px-2 py-1.5" : "px-3 py-2";
+  const totalCols = columns.length + (expandable ? 1 : 0);
 
   return (
     <div className="overflow-x-auto rounded border border-slate-800">
       <table className="min-w-full text-[11px]">
         <thead className="bg-slate-900/80 text-[10px] uppercase tracking-wider text-slate-500">
           <tr>
+            {expandable && <th className="w-7" aria-label="expand" />}
             {columns.map((c, i) => {
               const isSorted = sort?.key === c.key;
               const align = c.align ?? (c.numeric ? "right" : "left");
@@ -144,40 +165,65 @@ export function ResultsTable<T>({
             const sevAccent = severity
               ? `relative before:absolute before:left-0 before:top-0 before:h-full before:w-0.5 ${ROW_SEVERITY[severity]}`
               : "";
+            const isExpanded = expandable ? expanded.has(key) : false;
             return (
-              <tr
-                key={key}
-                onClick={onRowClick ? () => onRowClick(row) : undefined}
-                className={`${baseRow} ${sevAccent} ${
-                  highlight ? "bg-emerald-500/5" : "hover:bg-slate-900/40"
-                }`}
-              >
-                {columns.map((c, i) => {
-                  const align = c.align ?? (c.numeric ? "right" : "left");
-                  const alignClass =
-                    align === "right"
-                      ? "text-right"
-                      : align === "center"
-                        ? "text-center"
-                        : "text-left";
-                  const monoClass = c.numeric ? "font-mono tabular-nums" : "";
-                  const stickyClass =
-                    i === 0 && stickyFirst
-                      ? "sticky left-0 z-0 bg-slate-950/80 backdrop-blur"
-                      : "";
-                  const value = c.format
-                    ? c.format(row)
-                    : String((row as Record<string, unknown>)[c.key] ?? "");
-                  return (
-                    <td
-                      key={c.key}
-                      className={`${padding} ${alignClass} ${monoClass} ${stickyClass} text-slate-200`}
-                    >
-                      {value}
+              <Fragment key={key}>
+                <tr
+                  onClick={onRowClick ? () => onRowClick(row) : undefined}
+                  className={`${baseRow} ${sevAccent} ${
+                    highlight ? "bg-emerald-500/5" : "hover:bg-slate-900/40"
+                  }`}
+                >
+                  {expandable && (
+                    <td className="px-1 text-center align-middle">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleExpand(key);
+                        }}
+                        className="text-slate-500 hover:text-slate-300"
+                        aria-label={isExpanded ? "collapse row" : "expand row"}
+                        aria-expanded={isExpanded}
+                      >
+                        {isExpanded ? "▾" : "▸"}
+                      </button>
                     </td>
-                  );
-                })}
-              </tr>
+                  )}
+                  {columns.map((c, i) => {
+                    const align = c.align ?? (c.numeric ? "right" : "left");
+                    const alignClass =
+                      align === "right"
+                        ? "text-right"
+                        : align === "center"
+                          ? "text-center"
+                          : "text-left";
+                    const monoClass = c.numeric ? "font-mono tabular-nums" : "";
+                    const stickyClass =
+                      i === 0 && stickyFirst
+                        ? "sticky left-0 z-0 bg-slate-950/80 backdrop-blur"
+                        : "";
+                    const value = c.format
+                      ? c.format(row)
+                      : String((row as Record<string, unknown>)[c.key] ?? "");
+                    return (
+                      <td
+                        key={c.key}
+                        className={`${padding} ${alignClass} ${monoClass} ${stickyClass} text-slate-200`}
+                      >
+                        {value}
+                      </td>
+                    );
+                  })}
+                </tr>
+                {isExpanded && expandable && (
+                  <tr className="bg-slate-950/40">
+                    <td colSpan={totalCols} className="px-3 py-2">
+                      {expandable.render(row)}
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
             );
           })}
         </tbody>

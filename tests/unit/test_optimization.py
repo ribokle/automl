@@ -113,6 +113,10 @@ def test_milp_respects_ladder_and_margin_floor() -> None:
     assert res.price_multiplier in c.price_ladder
     floor_price = c.cog_pct * inp.base_price + c.margin_floor_pct * inp.base_price
     assert res.price >= floor_price - 1e-9
+    # chosen_slacks is keyed by constraint name; all should be >= 0 when feasible.
+    assert set(res.chosen_slacks) >= {"margin_floor", "move_lower", "move_upper"}
+    for v in res.chosen_slacks.values():
+        assert v >= -1e-9
 
 
 def test_milp_relaxes_when_no_cell_feasible() -> None:
@@ -134,6 +138,9 @@ def test_milp_relaxes_when_no_cell_feasible() -> None:
     assert res.feasible_strict is False
     assert res.relaxed is True
     assert any(v["constraint"].startswith("comp_gap") for v in res.binding_violations)
+    # The relaxed-cell's chosen_slacks contains the violated constraint with negative sign.
+    assert "comp_gap_lower" in res.chosen_slacks or "comp_gap_upper" in res.chosen_slacks
+    assert any(v < 0 for v in res.chosen_slacks.values())
 
 
 def test_milp_picks_higher_price_for_inelastic_margin() -> None:

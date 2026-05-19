@@ -73,6 +73,51 @@ export function ReplayBar({ events, scrubTs, onScrub }: Props) {
     };
   }, [playing, t0, tLast, scrubTs, onScrub]);
 
+  // Keyboard shortcuts: space toggles play/pause, ←/→ step one event tick.
+  useEffect(() => {
+    if (t0 == null || tLast == null || ordered.length < 2) return;
+    function onKey(e: KeyboardEvent) {
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName;
+      if (
+        tag === "INPUT" ||
+        tag === "TEXTAREA" ||
+        tag === "SELECT" ||
+        target?.isContentEditable
+      ) {
+        return;
+      }
+      if (e.key === " " || e.code === "Space") {
+        e.preventDefault();
+        if (playing) {
+          setPlaying(false);
+          return;
+        }
+        if (!scrubTs || Date.parse(scrubTs) >= tLast) {
+          onScrub(new Date(t0!).toISOString());
+        }
+        setPlaying(true);
+      } else if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+        e.preventDefault();
+        setPlaying(false);
+        const currentMs = scrubTs ? Date.parse(scrubTs) : tLast!;
+        if (e.key === "ArrowLeft") {
+          const prev = ordered
+            .filter(({ t }) => t < currentMs - 1)
+            .reduce<number | null>((acc, x) => (acc === null || x.t > acc ? x.t : acc), null);
+          if (prev !== null) onScrub(new Date(prev).toISOString());
+        } else {
+          const next = ordered.find(({ t }) => t > currentMs + 1)?.t ?? null;
+          if (next === null) onScrub(null);
+          else if (next >= tLast!) onScrub(null);
+          else onScrub(new Date(next).toISOString());
+        }
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [playing, scrubTs, ordered, t0, tLast, onScrub]);
+
   if (ordered.length < 2 || t0 == null || tLast == null) return null;
 
   const totalMs = tLast - t0;
@@ -148,6 +193,14 @@ export function ReplayBar({ events, scrubTs, onScrub }: Props) {
           >
             live
           </button>
+          <span
+            className="hidden font-mono text-[10px] text-slate-500 sm:inline"
+            title="space = play/pause · ← / → = step one event"
+          >
+            <kbd className="rounded border border-slate-700 px-1">␣</kbd>{" "}
+            <kbd className="rounded border border-slate-700 px-1">←</kbd>{" "}
+            <kbd className="rounded border border-slate-700 px-1">→</kbd>
+          </span>
         </div>
       </div>
 

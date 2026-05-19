@@ -71,6 +71,9 @@ def fit_loglog(
             test_pred = model.predict(X_test)
             diagnostics["test_wape"] = wape_units(y_test, test_pred)
             diagnostics["n_test"] = int(len(y_test))
+            diagnostics["test_residuals_log"] = (
+                np.asarray(y_test, dtype=float) - np.asarray(test_pred, dtype=float)
+            ).tolist()
 
     return ElasticityFit(
         ppg_id=ppg_id,

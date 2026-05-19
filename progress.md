@@ -920,11 +920,116 @@ the user-visible state actually was at that moment.
 - Each card's status, summary chips, and duration recompute from
   the visible event slice during replay. ✅
 
-### Phase 6d — Remaining polish (pending)
-More cards onto the shared `<ResultsTable>` (CandidatesTable +
-AnomalyTable refactors), keyboard shortcuts (←/→ to scrub frame-by-
-frame, space to play/pause), cross-run navigation (sidebar listing
-recent runs without leaving the run page), and the per-agent
-"more graphs" backlog items (modelling fitted-vs-actual scatter,
-decomposition stacked-area-over-time, simulation 2D contour,
-optimisation constraint-binding bar, validation residual histogram).
+### Phase 6d — Remaining polish ✅
+**Status:** complete. AnomalyTable + CandidatesTable now ride on the
+shared `<ResultsTable>` (the latter via a new `expandable` config that
+adds a leading ▸/▾ column and renders the per-PPG attempts block
+inline). ReplayBar honours `space` (play/pause) and `←` / `→`
+(step one event); the rail surfaces the shortcut hints on the right.
+A collapsible run sidebar fetches recent runs and links between them
+without leaving `/runs/[id]`. Five new charts wire onto the agent
+cards.
+
+**Frontend**
+- `web/components/tables/ResultsTable.tsx` — adds an optional
+  `expandable: { render, initialExpanded }` prop. When set, the table
+  prepends a ▸/▾ column whose click toggles an expansion row spanning
+  the full table width; controlled internally so callers stay
+  declarative.
+- `web/components/tables/AnomalyTable.tsx` — refactored onto
+  `ResultsTable`. Default sort: severity ascending (error → info), row
+  severity accent matches the pill colour. Empty-state message
+  preserved.
+- `web/components/tables/CandidatesTable.tsx` — refactored onto
+  `ResultsTable`. Uses `expandable` for the per-PPG attempts pane,
+  `highlightKey` for the SHAP-row selection, `onRowClick` for select.
+  Default sort: test WAPE asc so the best fit floats to the top.
+- `web/components/ReplayBar.tsx` — adds a keyboard listener: `Space`
+  toggles play/pause (snapping to start if at the end), `ArrowLeft`
+  / `ArrowRight` jump to the previous / next event tick. Keystrokes
+  inside inputs / textareas / contenteditable are ignored. New `<kbd>`
+  hint cluster on the right rail.
+- `web/components/RunSidebar.tsx` — new collapsible left sidebar.
+  Client-side `listRuns()` fetch, status-coloured dots, relative
+  timestamp per row, active-run highlight, "+ new run" footer link.
+  Collapses to a single ▸ button to keep the timeline full-width.
+- `web/app/runs/[id]/page.tsx` — wraps `RunTimeline` in a 2-column
+  flex layout so the sidebar sits beside the timeline on `lg+` and
+  stacks above on small screens.
+- `web/components/charts/FittedVsActual.tsx` — scatter of observed vs
+  predicted units per PPG; train (green) and test (yellow) coloured,
+  identity line dashed, Pearson r in the title.
+- `web/components/charts/DecompStackedArea.tsx` — stacked area of
+  `base + Σ due-by-group` per week per PPG, with the observed line
+  overlaid; PPG selector inline.
+- `web/components/charts/SimulationHeatmap.tsx` — price-multiplier ×
+  promo grid coloured by revenue / margin / units (toggleable);
+  PPG selector inline.
+- `web/components/charts/ConstraintBinding.tsx` — horizontal bar of
+  per-PPG chosen-cell slacks for every active constraint; negative
+  bars mean the constraint was relaxed.
+- `web/components/charts/ResidualHistogram.tsx` — 18-bin histogram
+  of pooled hold-out residuals (`observed - predicted` on log-units)
+  per PPG, with μ / σ / n in the title.
+- `web/components/AgentVisuals.tsx` — wires the new charts:
+  - modeling gets fitted-vs-actual under the selected SHAP PPG.
+  - decomposition + simulation pick up first-class visuals (each
+    with an inline PPG picker).
+  - optimization gets a constraint-binding bar between
+    recommendations and the editor (only when chosen_slacks is
+    populated, which it now always is).
+  - validation gets a residual histogram with a PPG picker.
+- `web/components/AgentCard.tsx` — adds `decomposition` and
+  `simulation` to the `VISUALS_AGENTS` allowlist so their cards open
+  to the new visuals.
+
+**Backend**
+- `core/optimization/milp.py` — `MILPResult.chosen_slacks` (dict[str,
+  float]) carries the chosen cell's per-constraint slack. Both
+  strict + relaxed solve paths populate it; the relaxed path emits
+  negative values for the constraints it had to break.
+- `core/agents/optimization.py` — surfaces `chosen_slacks` on the
+  per-PPG MILP block in `optimization_results.json`.
+- `core/agents/modeling.py` — new `_collect_fitted_vs_actual()` runs
+  the winning predictor on each PPG's full feature frame, writes
+  `fitted_vs_actual.json` with parallel arrays of observed /
+  predicted units (and log-units) + train/test split labels.
+- `core/agents/validation.py` — new `_collect_residuals()` flattens
+  fold-level hold-out residuals into a per-PPG bag, writes
+  `validation_residuals.json`.
+- `core/validation/rolling.py` — `fit_one_fold()` now records
+  `test_residuals_log` on each fold so the agent has the raw
+  residuals to roll up.
+- `core/models/{loglog_ols,semilog_ols,lightgbm_model}.py` — each
+  fitter stashes `diagnostics["test_residuals_log"]` whenever a test
+  frame is provided (parallel to `test_wape`).
+
+**Tests** (extended existing tests; full unit suite 138 passed)
+- `tests/unit/test_modeling.py` — asserts `fitted_vs_actual.json`
+  contains a row per fit PPG with parallel observed / predicted
+  arrays and a `n_train + n_test = n` split.
+- `tests/unit/test_validation.py` — asserts `validation_residuals.json`
+  is written, has per-PPG residual lists whose lengths sum across
+  folds, and contains float values.
+- `tests/unit/test_optimization.py` — extends the strict + relaxed
+  MILP tests to assert `chosen_slacks` is populated with the active
+  constraints (>= 0 when feasible; at least one < 0 when relaxed).
+
+**Verification**
+- `pnpm build` clean; `pnpm exec tsc --noEmit` clean.
+- `/runs/[id]` first-load JS 338 kB raw (~95 kB gz, under the 350 kB
+  target).
+- End-to-end on synthetic: `fitted_vs_actual.json` (8 rows),
+  `validation_residuals.json` (8 rows), `chosen_slacks` on every MILP
+  cell. Modeling, decomposition, simulation, optimization, validation
+  cards all surface the new visuals.
+- Full unit suite green (138 passing).
+
+**Acceptance**
+- AnomalyTable + CandidatesTable share `<ResultsTable>` (expandable
+  rows work). ✅
+- Space + ←/→ keyboard shortcuts move the replay scrubber. ✅
+- Cross-run sidebar surfaces every recent run from any
+  `/runs/[id]`. ✅
+- Each of the five "more graphs" backlog items renders on its
+  respective agent card. ✅

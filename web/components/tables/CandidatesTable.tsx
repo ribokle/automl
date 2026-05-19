@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { ResultsTable, type ColumnDef } from "./ResultsTable";
 
 export interface CandidateAttempt {
   model: string;
@@ -37,126 +37,70 @@ function fmt(n: number | undefined | null, digits = 3): string {
   return n.toFixed(digits);
 }
 
-export interface CandidatesTableProps {
-  rows: CandidatesRow[];
-  selectedPpg: string | null;
-  onSelectPpg: (ppg: string) => void;
+function winnerAttempt(row: CandidatesRow): CandidateAttempt | undefined {
+  return row.attempts.find((a) => a.model === row.winner_model);
 }
 
-export function CandidatesTable({ rows, selectedPpg, onSelectPpg }: CandidatesTableProps) {
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  function toggle(ppg: string) {
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      next.has(ppg) ? next.delete(ppg) : next.add(ppg);
-      return next;
-    });
-  }
-  return (
-    <div className="overflow-hidden rounded border border-slate-800">
-      <table className="w-full text-[11px]">
-        <thead className="bg-slate-900/80 text-[10px] uppercase tracking-wider text-slate-500">
-          <tr>
-            <th className="w-8" />
-            <th className="px-2 py-1.5 text-left">PPG</th>
-            <th className="px-2 py-1.5 text-left">Winner</th>
-            <th className="px-2 py-1.5 text-right">Elasticity</th>
-            <th className="px-2 py-1.5 text-right">R²</th>
-            <th className="px-2 py-1.5 text-right">Test WAPE</th>
-            <th className="px-2 py-1.5 text-right">N train</th>
-            <th className="px-2 py-1.5 text-center">Sign OK</th>
-            <th className="px-2 py-1.5 text-center">Retry</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-slate-800">
-          {rows.map((row) => {
-            const winnerAttempt = row.attempts.find((a) => a.model === row.winner_model);
-            const isExpanded = expanded.has(row.ppg_id);
-            const isSelected = selectedPpg === row.ppg_id;
-            return (
-              <FragmentRow
-                key={row.ppg_id}
-                row={row}
-                winnerAttempt={winnerAttempt}
-                isExpanded={isExpanded}
-                isSelected={isSelected}
-                onToggle={() => toggle(row.ppg_id)}
-                onSelect={() => onSelectPpg(row.ppg_id)}
-              />
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-interface FragmentRowProps {
-  row: CandidatesRow;
-  winnerAttempt: CandidateAttempt | undefined;
-  isExpanded: boolean;
-  isSelected: boolean;
-  onToggle: () => void;
-  onSelect: () => void;
-}
-
-function FragmentRow({ row, winnerAttempt, isExpanded, isSelected, onToggle, onSelect }: FragmentRowProps) {
-  return (
-    <>
-      <tr
-        onClick={onSelect}
-        className={`cursor-pointer ${isSelected ? "bg-emerald-500/5" : "hover:bg-slate-900/60"}`}
-      >
-        <td className="px-1 text-center">
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggle();
-            }}
-            className="text-slate-500 hover:text-slate-300"
-            aria-label={isExpanded ? "collapse" : "expand"}
-          >
-            {isExpanded ? "▾" : "▸"}
-          </button>
-        </td>
-        <td className="px-2 py-1.5 font-mono text-slate-200">{row.ppg_id}</td>
-        <td className="px-2 py-1.5 text-slate-200">{MODEL_LABEL[row.winner_model] ?? row.winner_model}</td>
-        <td className="px-2 py-1.5 text-right font-mono text-slate-200">
-          {winnerAttempt ? fmt(winnerAttempt.own_elasticity, 2) : "—"}
-        </td>
-        <td className="px-2 py-1.5 text-right font-mono text-slate-300">
-          {winnerAttempt ? fmt(winnerAttempt.r_squared, 2) : "—"}
-        </td>
-        <td className="px-2 py-1.5 text-right font-mono text-slate-300">
-          {winnerAttempt ? fmt(winnerAttempt.diagnostics.test_wape, 3) : "—"}
-        </td>
-        <td className="px-2 py-1.5 text-right font-mono text-slate-400">{row.n_train}</td>
-        <td className="px-2 py-1.5 text-center">
-          {winnerAttempt?.sign_ok ? (
-            <span className="rounded border border-emerald-500/40 bg-emerald-500/15 px-1.5 py-0.5 text-[10px] text-emerald-300">
-              ✓
-            </span>
-          ) : (
-            <span className="rounded border border-rose-500/40 bg-rose-500/15 px-1.5 py-0.5 text-[10px] text-rose-300">
-              ✗
-            </span>
-          )}
-        </td>
-        <td className="px-2 py-1.5 text-center text-slate-400">
-          {row.sign_retry_fired ? "yes" : "—"}
-        </td>
-      </tr>
-      {isExpanded && (
-        <tr className="bg-slate-950/40">
-          <td colSpan={9} className="px-3 py-2">
-            <AttemptsList row={row} />
-          </td>
-        </tr>
-      )}
-    </>
-  );
-}
+const COLUMNS: ColumnDef<CandidatesRow>[] = [
+  { key: "ppg_id", label: "PPG" },
+  {
+    key: "winner_model",
+    label: "Winner",
+    format: (r) => MODEL_LABEL[r.winner_model] ?? r.winner_model,
+  },
+  {
+    key: "elasticity",
+    label: "Elasticity",
+    numeric: true,
+    sortValue: (r) => winnerAttempt(r)?.own_elasticity ?? null,
+    format: (r) => fmt(winnerAttempt(r)?.own_elasticity, 2),
+  },
+  {
+    key: "r_squared",
+    label: "R²",
+    numeric: true,
+    sortValue: (r) => winnerAttempt(r)?.r_squared ?? null,
+    format: (r) => fmt(winnerAttempt(r)?.r_squared, 2),
+  },
+  {
+    key: "test_wape",
+    label: "Test WAPE",
+    numeric: true,
+    sortValue: (r) => winnerAttempt(r)?.diagnostics.test_wape ?? null,
+    format: (r) => fmt(winnerAttempt(r)?.diagnostics.test_wape, 3),
+  },
+  {
+    key: "n_train",
+    label: "N train",
+    numeric: true,
+    format: (r) => `${r.n_train}`,
+  },
+  {
+    key: "sign_ok",
+    label: "Sign OK",
+    align: "center",
+    sortValue: (r) => (winnerAttempt(r)?.sign_ok ? 1 : 0),
+    format: (r) => {
+      const ok = winnerAttempt(r)?.sign_ok;
+      return ok ? (
+        <span className="rounded border border-emerald-500/40 bg-emerald-500/15 px-1.5 py-0.5 text-[10px] text-emerald-300">
+          ✓
+        </span>
+      ) : (
+        <span className="rounded border border-rose-500/40 bg-rose-500/15 px-1.5 py-0.5 text-[10px] text-rose-300">
+          ✗
+        </span>
+      );
+    },
+  },
+  {
+    key: "retry",
+    label: "Retry",
+    align: "center",
+    sortValue: (r) => (r.sign_retry_fired ? 1 : 0),
+    format: (r) => (r.sign_retry_fired ? "yes" : "—"),
+  },
+];
 
 function AttemptsList({ row }: { row: CandidatesRow }) {
   return (
@@ -180,7 +124,10 @@ function AttemptsList({ row }: { row: CandidatesRow }) {
           {row.attempts.map((a) => {
             const isWinner = a.model === row.winner_model;
             return (
-              <tr key={a.model} className={isWinner ? "bg-emerald-500/5 text-slate-200" : "text-slate-400"}>
+              <tr
+                key={a.model}
+                className={isWinner ? "bg-emerald-500/5 text-slate-200" : "text-slate-400"}
+              >
                 <td className="px-2 py-1 font-mono">
                   {MODEL_LABEL[a.model] ?? a.model}
                   {isWinner && (
@@ -207,5 +154,26 @@ function AttemptsList({ row }: { row: CandidatesRow }) {
         </tbody>
       </table>
     </div>
+  );
+}
+
+export interface CandidatesTableProps {
+  rows: CandidatesRow[];
+  selectedPpg: string | null;
+  onSelectPpg: (ppg: string) => void;
+}
+
+export function CandidatesTable({ rows, selectedPpg, onSelectPpg }: CandidatesTableProps) {
+  return (
+    <ResultsTable
+      rows={rows}
+      columns={COLUMNS}
+      rowKey={(r) => r.ppg_id}
+      empty="No fits to display."
+      defaultSort={{ key: "test_wape", dir: "asc" }}
+      highlightKey={selectedPpg}
+      onRowClick={(r) => onSelectPpg(r.ppg_id)}
+      expandable={{ render: (r) => <AttemptsList row={r} /> }}
+    />
   );
 }

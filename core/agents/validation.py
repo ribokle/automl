@@ -85,6 +85,35 @@ def _load_controls(run_dir: Path) -> list[str]:
     return [c for c in ENGINEERED_COLUMNS if c not in (TARGET, "log_price")]
 
 
+def _collect_residuals(per_ppg: list[dict]) -> list[dict]:
+    """Flatten per-fold hold-out residuals into one per-PPG bag.
+
+    The histogram is built browser-side from the concatenated test
+    residuals across every fold; per-fold tagging is preserved so the
+    UI can colour the bars by fold if desired.
+    """
+    rows: list[dict] = []
+    for p in per_ppg:
+        residuals: list[float] = []
+        folds: list[dict] = []
+        for f in p.get("folds") or []:
+            r = f.get("test_residuals_log") or []
+            residuals.extend(float(v) for v in r)
+            folds.append({"fold": f.get("fold"), "n": len(r)})
+        if not residuals:
+            continue
+        rows.append(
+            {
+                "ppg_id": p["ppg_id"],
+                "winner_model": p.get("winner_model"),
+                "verdict": p.get("verdict"),
+                "residuals_log": residuals,
+                "folds": folds,
+            }
+        )
+    return rows
+
+
 def _validate_one(
     ppg_id: str,
     slice_: pd.DataFrame,
@@ -233,6 +262,18 @@ class ValidationAgent(Agent):
                 mime="application/json",
                 agent=self.name,
                 name=table_path.name,
+            )
+        )
+
+        residuals_blob = _collect_residuals(per_ppg)
+        residuals_path = run_dir / "validation_residuals.json"
+        residuals_path.write_text(json.dumps(residuals_blob, indent=2, default=str))
+        result.artifacts.append(
+            ArtifactRef(
+                path=str(residuals_path),
+                mime="application/json",
+                agent=self.name,
+                name=residuals_path.name,
             )
         )
 
