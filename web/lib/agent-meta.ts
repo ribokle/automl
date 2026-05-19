@@ -146,6 +146,15 @@ export function summariseOutputs(
           ? `${o.n_shrunk} PPGs pooled · τ²=${Number(o.tau_squared ?? 0).toFixed(2)}`
           : "",
       ].filter(Boolean);
+    case "optimization":
+      return [
+        typeof o.n_optimised === "number" ? `${o.n_optimised} PPGs optimised` : "",
+        typeof o.objective === "string" ? `objective: ${o.objective}` : "",
+        typeof o.ladder_size === "number" ? `${o.ladder_size}-rung ladder` : "",
+        typeof o.n_relaxed === "number" && o.n_relaxed > 0
+          ? `${o.n_relaxed} relaxed`
+          : "",
+      ].filter(Boolean);
     default:
       return Object.entries(o)
         .slice(0, 4)

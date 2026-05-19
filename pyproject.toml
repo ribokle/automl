@@ -27,6 +27,7 @@ dependencies = [
     "scipy>=1.13",
     "statsmodels>=0.14",
     "lightgbm>=4.3",
+    "pulp>=2.8",
 ]
 
 [project.optional-dependencies]

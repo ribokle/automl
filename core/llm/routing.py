@@ -6,7 +6,7 @@ SONNET = "claude-sonnet-4-6"
 
 # Heavy reasoning agents -> opus; lighter narration / structured agents -> sonnet.
 OPUS_AGENTS: frozenset[str] = frozenset(
-    {"ppg_mapping", "ppg_selection", "modeling", "decomposition", "insights"}
+    {"ppg_mapping", "ppg_selection", "modeling", "decomposition", "optimization", "insights"}
 )
 
 

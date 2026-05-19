@@ -498,7 +498,89 @@ graphs (Later)".
 ## Phase 5 — Optimization + Validation
 Opt tools, constraint-elicitation gate, scipy continuous warm start → PuLP MILP with ladder/margin-floor/comp-gap, validation agent (holdout WAPE, elasticity reasonableness, stability), constraint editor + recommendation table UI.
 
-**Status:** pending.
+**Status:** in progress (5a complete; 5b pending).
+
+### Phase 5a — Constrained price optimisation ✅
+**Status:** complete. End-to-end run on the synthetic panel optimises every
+OLS-winning PPG against a 9-rung price ladder under margin-floor +
+competitive-gap + move-guardrail constraints. The scipy continuous solver
+runs first as a warm-start anchor; the PuLP MILP then picks the best
+ladder rung × promo state. When no cell is strictly feasible the agent
+falls back to a soft-constraint relaxation that picks the least-violating
+cell and reports which constraints were violated and by how much. On the
+synthetic panel: 3/4 PPGs strictly feasible, 1 hits a relaxation because
+the SKU's base price ($1.00) sits too far below the competitor reference
+($2.13) to satisfy the 15% comp-gap inside the 20% move guardrail.
+
+**Backend**
+- `core/optimization/constraints.py` — `OptimizationConstraints` dataclass
+  with price ladder, promo states, COG %, margin floor %, comp gap %,
+  move guardrail, objective (revenue / margin). Per-PPG `PPGOptInputs`
+  carries coefficients + base price + context + competitor reference.
+- `core/optimization/predict.py` — single-cell closed-form unit / revenue
+  / margin prediction; mirrors `simulate_ols_grid` for parity, used by
+  both solvers.
+- `core/optimization/continuous.py` — scipy `minimize_scalar` over the
+  bounded multiplier interval, intersected with the margin-floor +
+  comp-gap windows. Returns the unconstrained-but-bounded optimum per
+  promo state and picks the better.
+- `core/optimization/milp.py` — PuLP CBC MILP: pre-compute every
+  (multiplier, promo) cell's value + constraint slacks, pick exactly one
+  feasible cell that maximises the objective. Infeasible problems fall
+  back to a relaxed solve that minimises `Σ violation` with the
+  objective as a secondary tie-breaker; reports `binding_violations`
+  with per-constraint magnitudes.
+- `core/agents/optimization.py` — orchestrates per-PPG continuous +
+  MILP, honours `run.options["optimization"]` overrides for every
+  constraint field. Writes:
+  - `optimization_results.json` — full continuous + MILP solution per PPG.
+  - `optimization_table.json` — flat `(ppg_id, multiplier, price, promo,
+    units, revenue, margin, ...)` rows for the UI's shared
+    `<ResultsTable>`.
+  - `optimization_constraints.json` — the resolved constraint set
+    (defaults + overrides) for audit + UI display.
+- `core/orchestrator/runner.py` — registers `OptimizationAgent` in
+  `REAL_AGENTS`; replaces the StubAgent. The `optimization` gate stays
+  default-on (existing post-run review pattern).
+- `core/llm/routing.py` — adds `optimization` to `OPUS_AGENTS` for the
+  rationale narration.
+
+**Frontend**
+- `web/lib/agent-meta.ts` — optimization card surfaces
+  `n_optimised`, objective, ladder size, and `n_relaxed` chips.
+- Inline constraint editor + recommendation table land in 5b alongside
+  the validation card.
+
+**Tests** (10 new; full suite 94 passed)
+- `tests/unit/test_optimization.py` — predict matches simulator grid
+  cell-for-cell; continuous picks the lower bound for elastic demand;
+  continuous flags infeasible bounds; MILP respects ladder + margin
+  floor; MILP relaxes with comp-gap violation when the competitor sits
+  outside the move guardrail; MILP picks the upper ladder rung for
+  inelastic demand on the margin objective; agent writes three
+  artefacts; LightGBM winners skipped; `run.options["optimization"]`
+  override resolves into the saved constraint set + recommended cell.
+
+**Deps**
+- Add `pulp>=2.8` to `pyproject.toml`.
+
+**Acceptance gate**
+- MILP recommendation lies on the configured ladder. ✅
+- Margin-floor + competitive-gap + move-guardrail constraints enforced
+  in the strict path. ✅
+- Soft-constraint fallback fires + surfaces `binding_violations` when
+  no cell is strictly feasible. ✅
+- `optimization_results.json` + `optimization_table.json` +
+  `optimization_constraints.json` on disk end-to-end. ✅
+
+### Phase 5b — Validation + constraint editor UI (pending)
+Adds the validation agent (holdout MAPE/WAPE per PPG, elasticity
+reasonableness checks, rolling-origin CV, stability metrics), plus the
+inline constraint editor + recommendation table components that exercise
+`run.options["optimization"]`. Constraint-elicitation gate (pre-MILP
+pause for user-supplied constraints) is the open scoping question — the
+current post-MILP `optimization` gate works but doesn't let the user set
+the ladder before solving.
 
 ## Phase 6 — Insights + Report + Polish
 Insights agent, HTML + PDF report (jinja + weasyprint), cost dashboard, run replay, dark mode, error/retry states.
