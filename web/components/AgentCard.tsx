@@ -64,7 +64,12 @@ export function AgentCard({ runId, agent, index, status, events, agentState, isL
       Date.parse(lastRerun.ts) > Date.parse(lastFinished.ts));
   const outputs = agentState?.outputs ?? events.find((e) => e.type === "agent_finished")?.outputs ?? null;
   const summary = summariseOutputs(agent, outputs);
-  const duration = formatDuration(agentState?.started_at, agentState?.finished_at);
+  const startedEvt = events.find((e) => e.type === "agent_started")?.ts ?? null;
+  const finishedEvt =
+    events.find((e) => e.type === "agent_finished" || e.type === "agent_failed")?.ts ?? null;
+  const duration =
+    formatDuration(agentState?.started_at, agentState?.finished_at) ??
+    formatDuration(startedEvt, finishedEvt);
   const reasoning = agentState?.reasoning;
   const confidence = agentState?.confidence;
   const errorText = agentState?.error ?? events.find((e) => e.type === "agent_failed")?.error;

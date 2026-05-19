@@ -799,9 +799,57 @@ the runs index + the per-agent card statuses.
 - Runs index renders relative timestamps + clear status pill, plus an
   error state when the API is unreachable. ✅
 
-### Phase 6c — Run replay + remaining polish (pending)
-Run-replay control that scrubs through `events.jsonl`; more cards onto
-the shared `<ResultsTable>` (PPGTable, CandidatesTable, QualityPanel,
-AnomalyTable); navigation between runs without a full reload (sidebar
-or jump-to-next-run); a few of the missing "more graphs" backlog
-items.
+### Phase 6c — Run-replay scrubber ✅
+**Status:** complete (first slice). Adds a replay control at the top of
+`/runs/[id]` that scrubs through the persisted `events.jsonl` stream.
+The user can drag to any moment in the run, hit play to watch it
+animate forward, or click "live" to snap back to the running tail. While
+scrubbing, every agent card derives its status from filtered events
+only — the live runState is ignored so the page faithfully shows what
+the user-visible state actually was at that moment.
+
+**Frontend**
+- `web/components/ReplayBar.tsx` — slider with tick marks coloured by
+  event type (sky `run_started`, amber `agent_started`, emerald
+  `agent_finished`, rose `agent_failed`, purple `approval_required`),
+  play / pause / live buttons, elapsed-time + clock-time labels, and a
+  "frozen at HH:MM:SS · <agent> · <event>" status pill. Snaps to live
+  when dragged to the trailing edge. Auto-paces playback to ~80 frames
+  across the run's wall-clock span.
+- `web/components/RunTimeline.tsx` — tracks `scrubTs` state; computes
+  `visibleEvents` by filtering `events` against the cutoff; passes
+  filtered events to every `AgentCard`; suppresses `runState` for
+  cards / cost dashboard / artifact gallery during replay so derived
+  status comes purely from event order; hides the executive banner
+  during replay (it would otherwise show insights summary regardless
+  of the scrub position).
+- `web/components/AgentCard.tsx` — adds an event-derived
+  `formatDuration` fallback (uses `agent_started` + `agent_finished`
+  timestamps from the events stream) so per-card timing stays visible
+  during replay even though `agentState.started_at` / `finished_at`
+  aren't available.
+
+**Verification**
+- `pnpm build` + `tsc --noEmit` clean. `/runs/[id]` first-load JS 327 kB
+  raw (~91 kB gz, well under the 350 kB gz target).
+- SSE `events` endpoint replays history into the scrubber on page
+  load (sanity-checked against an existing run in `runs/`).
+- Python suite: 123 passed (no backend changes).
+
+**Acceptance**
+- Scrubber covers the entire run wall-clock span and snaps cleanly
+  between scrubbed + live modes. ✅
+- Tick density on the rail reflects the real event distribution
+  (cluster of ticks where agents fire rapidly, gaps where one agent
+  runs alone). ✅
+- Each card's status, summary chips, and duration recompute from
+  the visible event slice during replay. ✅
+
+### Phase 6d — Remaining polish (pending)
+More cards onto the shared `<ResultsTable>` (CandidatesTable +
+AnomalyTable refactors), keyboard shortcuts (←/→ to scrub frame-by-
+frame, space to play/pause), cross-run navigation (sidebar listing
+recent runs without leaving the run page), and the per-agent
+"more graphs" backlog items (modelling fitted-vs-actual scatter,
+decomposition stacked-area-over-time, simulation 2D contour,
+optimisation constraint-binding bar, validation residual histogram).
