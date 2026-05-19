@@ -3,6 +3,7 @@
 import { AgentCard } from "./AgentCard";
 import { ArtifactGallery } from "./ArtifactGallery";
 import { CostDashboard } from "./CostDashboard";
+import { ExecutiveBanner } from "./ExecutiveBanner";
 import { RunHeader } from "./RunHeader";
 import { useRunEvents, useRunState } from "@/lib/sse";
 import { AGENT_ORDER, type AgentName, type AgentStatus } from "@/lib/types";
@@ -40,6 +41,12 @@ export function RunTimeline({ runId }: Props) {
 
   const runStarted = events.find((e) => e.type === "run_started")?.ts ?? runState?.created_at ?? null;
 
+  const insightsState = runState?.agents?.insights;
+  const insightsReady = insightsState?.status === "done";
+  const hasPdf =
+    Boolean(insightsState?.artifacts?.some((a) => a.name === "report.pdf")) ||
+    insightsState?.outputs?.pdf === true;
+
   return (
     <div className="flex flex-col gap-6">
       <RunHeader
@@ -48,6 +55,7 @@ export function RunTimeline({ runId }: Props) {
         agents={runState?.agents ?? null}
         startedAt={runStarted}
       />
+      <ExecutiveBanner runId={runId} insightsReady={insightsReady} hasPdf={hasPdf} />
       <div>
         {AGENT_ORDER.map((agent, i) => (
           <AgentCard

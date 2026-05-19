@@ -745,8 +745,63 @@ PDF ≈ 35 kB, total pipeline ≈ 12 s wall-clock in dry-run mode.
 - Insights agent succeeds even when WeasyPrint can't run (HTML still
   written, output flag surfaces the PDF failure). ✅
 
-### Phase 6b — UI polish + run replay (pending)
-Carry over the existing open follow-ups (better dark mode, polished
-empty / error states, navigation between runs without a full reload,
-shared `<ResultsTable>` component across cards) and add a run-replay
-control that scrubs through `events.jsonl`.
+### Phase 6b — UI polish: shared table + executive banner ✅
+**Status:** complete (first slice of the polish backlog). Adds a
+generic `<ResultsTable>` (sortable headers, sticky first column,
+row-level severity accent), refactors `RecommendationTable` and
+`ValidationTable` onto it, drops an executive-summary banner at the
+top of `/runs/[id]` that pulls headline + KPI tiles + report download
+links from `insights_summary.json` once insights is done, and polishes
+the runs index + the per-agent card statuses.
+
+**Frontend**
+- `web/components/tables/ResultsTable.tsx` — typed `ColumnDef<T>[]`
+  contract with `format` / `sortValue` / `severity` / `numeric`;
+  click-to-sort headers with `aria-sort`; sticky first column on
+  horizontal scroll; optional 2px row-edge severity accent
+  (pass/warn/fail/info/neutral); supports row click + highlight
+  (for the modeling SHAP-row selection pattern).
+- `web/components/tables/RecommendationTable.tsx` — refactored onto
+  `ResultsTable`. Default sort: revenue desc. Adds row severity
+  (relaxed → warn accent, feasible → pass).
+- `web/components/tables/ValidationTable.tsx` — refactored. Default
+  sort: verdict (fail first → pass last). Row severity = verdict.
+- `web/components/ExecutiveBanner.tsx` — new top-of-page section.
+  Only renders once `agents.insights.status === "done"`. Fetches
+  `insights_summary.json`, shows headline + four KPI tiles (PPGs
+  optimised, strict feasible, validation pass count, recommended
+  revenue) with tone-coded borders (emerald / amber by health) +
+  HTML / PDF download buttons. Hides if PDF didn't write.
+- `web/components/RunTimeline.tsx` — wires the banner in between
+  `RunHeader` and the agent timeline. Detects PDF availability via
+  `agents.insights.artifacts` or `outputs.pdf` flag.
+- `web/components/AgentCard.tsx` — card-level status colour: idle
+  cards lose 30% opacity, running gets an amber edge, awaiting
+  approval purple, failed rose; collapsed failed cards now surface a
+  truncated error one-liner so reviewers don't have to expand.
+- `web/app/runs/page.tsx` — runs index now renders a "+ New run"
+  CTA, a relative timestamp (`5m ago` / `2h ago` / `3d ago`) per
+  row, and a status-tone-coded pill. Errors from `listRuns()` surface
+  as a rose-tinted banner instead of silently showing "No runs yet."
+
+**Verification**
+- `pnpm build` clean; `pnpm exec tsc --noEmit` clean.
+- `/runs/[id]` first-load JS 325 kB raw (~90 kB gz, well under the
+  350 kB gz target).
+- Full pytest sweep: 123 passed (no Python changes).
+
+**Acceptance**
+- Shared `<ResultsTable>` used by ≥ 2 agent cards. ✅
+- Headers click-to-sort; default sorts pick the most-useful column
+  per table (revenue desc, verdict severity asc). ✅
+- Executive banner appears at the top of the run page once insights
+  is done, with one-click access to the HTML + PDF reports. ✅
+- Runs index renders relative timestamps + clear status pill, plus an
+  error state when the API is unreachable. ✅
+
+### Phase 6c — Run replay + remaining polish (pending)
+Run-replay control that scrubs through `events.jsonl`; more cards onto
+the shared `<ResultsTable>` (PPGTable, CandidatesTable, QualityPanel,
+AnomalyTable); navigation between runs without a full reload (sidebar
+or jump-to-next-run); a few of the missing "more graphs" backlog
+items.

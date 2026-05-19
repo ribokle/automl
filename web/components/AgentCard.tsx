@@ -93,7 +93,19 @@ export function AgentCard({ runId, agent, index, status, events, agentState, isL
         {!isLast && <div className="mt-1 w-px flex-1 bg-slate-800" />}
       </div>
 
-      <div className={`mb-3 rounded-lg border border-slate-800 bg-slate-900/60 transition`}>
+      <div
+        className={`mb-3 rounded-lg border bg-slate-900/60 transition ${
+          status === "running"
+            ? "border-amber-500/30"
+            : status === "awaiting_approval"
+              ? "border-purple-500/30"
+              : status === "failed"
+                ? "border-rose-500/30"
+                : status === "done"
+                  ? "border-slate-800"
+                  : "border-slate-800/60 opacity-70"
+        }`}
+      >
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
@@ -123,6 +135,9 @@ export function AgentCard({ runId, agent, index, status, events, agentState, isL
                   </span>
                 ))}
               </div>
+            )}
+            {status === "failed" && errorText && !open && (
+              <p className="mt-2 truncate text-[11px] text-rose-300">{errorText}</p>
             )}
           </div>
           {showDisclosure && (
