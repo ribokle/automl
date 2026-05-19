@@ -91,6 +91,50 @@ def test_build_predictor_for_lightgbm_recovers_negative_elasticity() -> None:
     assert higher < base
 
 
+def test_lightgbm_monotone_constraint_pins_log_price_decreasing() -> None:
+    """Even on noisy data with a few positive-slope rows, the monotone
+    constraint guarantees the booster's predictions are non-increasing in
+    log_price across the *training* domain."""
+    rng = np.random.default_rng(101)
+    n = 200
+    log_base_price = np.log(3.0) * np.ones(n)
+    log_price = log_base_price + np.log(0.8 + 0.4 * rng.random(n))
+    # Inject ~5% positive-slope outliers to make sure the constraint
+    # actually binds.
+    noise = rng.normal(0, 0.1, n)
+    log_units = 6.5 - 2.0 * log_price + noise
+    outliers = rng.choice(n, size=10, replace=False)
+    log_units[outliers] += 3.0 * (log_price[outliers] - log_base_price[outliers])
+    frame = pd.DataFrame(
+        {
+            "ppg_id": "PPG",
+            "week_start": pd.date_range("2024-01-01", periods=n, freq="W").astype(str),
+            "log_units": log_units,
+            "log_price": log_price,
+            "log_base_price": log_base_price,
+            "tpr_share": rng.binomial(1, 0.3, size=n).astype(float),
+            "log_distribution_acv": np.log(70 + 20 * rng.random(n)),
+        }
+    )
+    predictor = build_predictor(
+        {"ppg_id": "PPG", "winner_model": "lightgbm", "winner": {}},
+        frame,
+        controls=["tpr_share", "log_distribution_acv"],
+        test_ratio=0.0,
+    )
+    # Sweep log_price within the training range; predictions must be
+    # non-increasing.
+    sweep = pd.DataFrame(
+        {
+            "log_price": np.linspace(log_price.min(), log_price.max(), 50),
+            "tpr_share": 0.0,
+            "log_distribution_acv": float(np.log(85)),
+        }
+    )
+    preds = predictor.predict_log(sweep[predictor.feature_cols])
+    assert np.all(np.diff(preds) <= 1e-9), "monotone constraint violated"
+
+
 def test_build_predictor_for_lightgbm_full_frame_when_test_ratio_zero() -> None:
     frame = _toy_frame(n=80)
     modeling_row = {"ppg_id": "PPG", "winner_model": "lightgbm", "winner": {}}

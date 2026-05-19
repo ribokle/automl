@@ -147,12 +147,15 @@ def _fit_lightgbm_booster(
     sub = frame[["log_units", *feature_cols]].dropna()
     X = sub[feature_cols].astype(float).copy()
     y = sub["log_units"].astype(float).to_numpy()
+    # Mirror fit_lightgbm's monotone constraint on log_price (column 0).
+    monotone_constraints = [-1] + [0] * (len(feature_cols) - 1)
     model = LGBMRegressor(
         n_estimators=200,
         learning_rate=0.05,
         num_leaves=15,
         min_child_samples=5,
         random_state=0,
+        monotone_constraints=monotone_constraints,
         verbosity=-1,
     )
     model.fit(X, y)

@@ -14,6 +14,7 @@ export interface RecommendationRow {
   margin: number;
   feasible_strict: boolean;
   relaxed: boolean;
+  envelope_clipped?: boolean;
   model_kind: string;
   rationale?: string;
 }
@@ -78,18 +79,29 @@ const COLUMNS: ColumnDef<RecommendationRow>[] = [
     label: "Status",
     align: "center",
     sortValue: (r) => (r.relaxed ? 1 : r.feasible_strict ? 0 : 2),
-    format: (r) =>
-      r.relaxed ? (
-        <span className="rounded border border-amber-500/40 bg-amber-500/15 px-1.5 py-0.5 text-[9.5px] text-amber-300">
-          relaxed
-        </span>
-      ) : r.feasible_strict ? (
-        <span className="rounded border border-emerald-500/40 bg-emerald-500/15 px-1.5 py-0.5 text-[9.5px] text-emerald-300">
-          feasible
-        </span>
-      ) : (
-        <span className="text-slate-500">—</span>
-      ),
+    format: (r) => (
+      <div className="flex flex-wrap items-center justify-center gap-1">
+        {r.relaxed ? (
+          <span className="rounded border border-amber-500/40 bg-amber-500/15 px-1.5 py-0.5 text-[9.5px] text-amber-300">
+            relaxed
+          </span>
+        ) : r.feasible_strict ? (
+          <span className="rounded border border-emerald-500/40 bg-emerald-500/15 px-1.5 py-0.5 text-[9.5px] text-emerald-300">
+            feasible
+          </span>
+        ) : (
+          <span className="text-slate-500">—</span>
+        )}
+        {r.envelope_clipped && (
+          <span
+            className="rounded border border-sky-500/40 bg-sky-500/15 px-1.5 py-0.5 text-[9.5px] text-sky-300"
+            title="LightGBM ladder clipped to training-price envelope"
+          >
+            envelope
+          </span>
+        )}
+      </div>
+    ),
   },
 ];
 

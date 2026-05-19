@@ -11,6 +11,17 @@ local-elasticity estimate the agent reports.
 R² and hold-out WAPE are reported on the same scale as the OLS fitters
 (R² on log_units, WAPE on raw units) so the agent can rank candidates on
 equal footing.
+
+**Monotone constraints.** The booster is fit with
+``monotone_constraints`` pinning ``log_price`` to be monotonically
+decreasing in ``log_units`` (constraint = -1). Without this LightGBM is
+free to learn locally-positive slopes in dense regions and flat
+extrapolation past the training range can swing positive — both produce
+wrong-sign elasticities and bias the optimiser toward implausible high
+prices. The constraint is a *modelling* prior, not a fix for
+out-of-range extrapolation; the optimiser also clips the price ladder
+to the per-PPG training envelope (see
+:mod:`core.agents.optimization`).
 """
 from __future__ import annotations
 
@@ -71,12 +82,18 @@ def fit_lightgbm(
     cols = [LOG_PRICE] + usable
 
     X_train, y_train = _design_xy(frame, cols)
+    # log_price is always cols[0]; pin it to monotone-decreasing, leave
+    # every other column unconstrained (0). Stops the booster from
+    # learning locally-positive price slopes that produce wrong-sign
+    # elasticities and bias the optimiser toward implausible high prices.
+    monotone_constraints = [-1] + [0] * (len(cols) - 1)
     model = LGBMRegressor(
         n_estimators=n_estimators,
         learning_rate=learning_rate,
         num_leaves=num_leaves,
         min_child_samples=min_child_samples,
         random_state=random_state,
+        monotone_constraints=monotone_constraints,
         verbosity=-1,
     )
     model.fit(X_train, y_train)

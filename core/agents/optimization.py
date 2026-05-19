@@ -166,17 +166,102 @@ def _build_inputs(
     )
 
 
+def _training_price_envelope(slice_: pd.DataFrame) -> tuple[float, float] | None:
+    """Min / max observed price for one PPG's training slice.
+
+    Returns ``None`` when neither ``price`` nor ``log_price`` is available.
+    Used by :func:`_clip_ladder_to_envelope` to constrain LightGBM
+    recommendations to the price range the booster actually saw — past
+    that range the tree ensemble extrapolates flat (even with monotone
+    constraints) and the optimiser's chosen multiplier is no longer
+    grounded in data.
+    """
+    import numpy as np
+
+    if "price" in slice_.columns and slice_["price"].notna().any():
+        prices = slice_["price"].astype(float).to_numpy()
+    elif "log_price" in slice_.columns and slice_["log_price"].notna().any():
+        prices = np.exp(slice_["log_price"].astype(float).to_numpy())
+    else:
+        return None
+    prices = prices[np.isfinite(prices) & (prices > 0)]
+    if prices.size == 0:
+        return None
+    return float(prices.min()), float(prices.max())
+
+
+def _clip_ladder_to_envelope(
+    constraints: OptimizationConstraints,
+    inp: PPGOptInputs,
+    envelope: tuple[float, float] | None,
+) -> tuple[OptimizationConstraints, dict | None]:
+    """For LightGBM winners, keep only ladder rungs whose absolute price
+    lies inside the training-price envelope.
+
+    Returns the (possibly-clipped) constraints and a small audit dict the
+    optimisation result blob records so the UI can show why a rung was
+    dropped. If clipping would leave zero rungs the original ladder is
+    kept verbatim (better to surface a relaxed solution than to silently
+    drop the PPG).
+    """
+    if inp.model_kind != "lightgbm" or envelope is None or inp.base_price <= 0:
+        return constraints, None
+    lo, hi = envelope
+    kept: list[float] = []
+    dropped: list[float] = []
+    for m in constraints.price_ladder:
+        price = inp.base_price * m
+        if lo - 1e-9 <= price <= hi + 1e-9:
+            kept.append(m)
+        else:
+            dropped.append(m)
+    if not kept:
+        # Refuse to clip ourselves into a corner — the relaxed MILP will
+        # surface a binding-violations note instead.
+        return constraints, {
+            "ppg_id": inp.ppg_id,
+            "envelope": [lo, hi],
+            "kept_multipliers": list(constraints.price_ladder),
+            "dropped_multipliers": [],
+            "ladder_clipped": False,
+            "reason": "all ladder rungs outside training envelope; clip skipped",
+        }
+    if not dropped:
+        return constraints, None
+    clipped = OptimizationConstraints(
+        price_ladder=tuple(kept),
+        promo_states=constraints.promo_states,
+        cog_pct=constraints.cog_pct,
+        margin_floor_pct=constraints.margin_floor_pct,
+        comp_gap_pct=constraints.comp_gap_pct,
+        max_decrease=constraints.max_decrease,
+        max_increase=constraints.max_increase,
+        objective=constraints.objective,
+    )
+    return clipped, {
+        "ppg_id": inp.ppg_id,
+        "envelope": [lo, hi],
+        "kept_multipliers": kept,
+        "dropped_multipliers": dropped,
+        "ladder_clipped": True,
+    }
+
+
 def _optimise_one(
-    inp: PPGOptInputs, constraints: OptimizationConstraints
+    inp: PPGOptInputs,
+    constraints: OptimizationConstraints,
+    envelope: tuple[float, float] | None,
 ) -> dict:
-    continuous = solve_continuous(inp, constraints)
-    milp = solve_milp(inp, constraints)
+    effective, envelope_note = _clip_ladder_to_envelope(constraints, inp, envelope)
+    continuous = solve_continuous(inp, effective)
+    milp = solve_milp(inp, effective)
     return {
         "ppg_id": inp.ppg_id,
         "model_kind": inp.model_kind,
         "base_price": inp.base_price,
         "competitor_price": inp.competitor_price,
         "objective": constraints.objective,
+        "envelope_clip": envelope_note,
         "continuous": {
             "price_multiplier": continuous.price_multiplier,
             "price": continuous.price,
@@ -257,8 +342,12 @@ class OptimizationAgent(Agent):
                     continue
 
             inp = _build_inputs(ppg_id, slice_, row, controls_for_opt, winner)
-            payload = await asyncio.to_thread(_optimise_one, inp, constraints)
+            envelope = _training_price_envelope(slice_) if winner == "lightgbm" else None
+            payload = await asyncio.to_thread(_optimise_one, inp, constraints, envelope)
             per_ppg.append(payload)
+            envelope_clipped = bool(
+                payload.get("envelope_clip") and payload["envelope_clip"].get("ladder_clipped")
+            )
             flat_table.append(
                 {
                     "ppg_id": ppg_id,
@@ -272,6 +361,7 @@ class OptimizationAgent(Agent):
                     "margin": payload["milp"]["margin"],
                     "feasible_strict": payload["milp"]["feasible_strict"],
                     "relaxed": payload["milp"]["relaxed"],
+                    "envelope_clipped": envelope_clipped,
                     "model_kind": winner,
                 }
             )
@@ -284,6 +374,7 @@ class OptimizationAgent(Agent):
                     "model_kind": winner,
                     "milp_multiplier": payload["milp"]["price_multiplier"],
                     "relaxed": payload["milp"]["relaxed"],
+                    "envelope_clipped": envelope_clipped,
                     "n_feasible_cells": payload["milp"]["n_cells_feasible"],
                 },
             )
@@ -316,10 +407,16 @@ class OptimizationAgent(Agent):
             p["rationale"] = rationale_by_id.get(p["ppg_id"], "")
 
         n_relaxed = sum(1 for p in per_ppg if p["milp"]["relaxed"])
+        n_envelope_clipped = sum(
+            1
+            for p in per_ppg
+            if p.get("envelope_clip") and p["envelope_clip"].get("ladder_clipped")
+        )
         result.outputs = {
             "n_optimised": len(per_ppg),
             "n_skipped": len(skipped),
             "n_relaxed": n_relaxed,
+            "n_envelope_clipped": n_envelope_clipped,
             "objective": constraints.objective,
             "ladder_size": len(constraints.price_ladder),
         }

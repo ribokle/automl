@@ -545,13 +545,22 @@ suite 135 passed)
   `test_optimization` / `test_validation` LightGBM-skip assertions to
   LightGBM-flows-through assertions.
 
-**Known limitation surfaced**
-- LightGBM extrapolates flat outside the training price range, so the
-  optimiser's MILP tends to pick the top of the price ladder for
-  LightGBM winners when revenue is the objective. This is a model
-  characteristic, not an optimiser bug — flagged here so future tuning
-  can either constrain LightGBM PPGs to the training-price envelope
-  or layer a guard band on top of the move guardrail.
+**LightGBM extrapolation mitigations (shipped together with 4b core)**
+- `core/models/lightgbm_model.py` + `core/models/predictor.py`:
+  `monotone_constraints=[-1, 0, ...]` pins ``log_price`` to be
+  monotonically decreasing in ``log_units``. Removes the
+  wrong-sign-elasticity failure mode entirely.
+- `core/agents/optimization.py`: for LightGBM winners only, the price
+  ladder is clipped to ``[min_train_price, max_train_price]`` before
+  the MILP runs. Dropped rungs are surfaced via
+  `optimization_results.json#envelope_clip` and counted by
+  `outputs.n_envelope_clipped`; the UI recommendation row shows an
+  "envelope" chip when this fired. OLS winners are left unchanged —
+  they extrapolate cleanly. Documented under README "Caveats".
+- End-to-end on synthetic: 3/4 LightGBM PPGs hit the envelope clip;
+  recommendations slide from the previous top-of-ladder 1.15 down
+  to 0.98/1.00 inside their training range. Recommended revenue:
+  ~$578k (vs the un-clipped $589k).
 
 **Acceptance gate**
 - LightGBM-winning PPGs are no longer skipped by any downstream

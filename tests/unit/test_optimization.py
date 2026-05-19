@@ -272,6 +272,97 @@ def test_optimization_agent_handles_lightgbm(tmp_path: Path, monkeypatch) -> Non
     assert results[0]["milp"]["price_multiplier"] in constraints["price_ladder"]
 
 
+def test_optimization_clips_lightgbm_ladder_to_training_envelope(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Ladder rungs that resolve to prices outside the PPG's training
+    price range get dropped before the MILP runs for LightGBM winners.
+
+    The toy frame's prices live in [2.4, 3.6] (base 3.0 × [0.8, 1.2]).
+    The default ladder includes 0.85 (= $2.55) and 1.15 (= $3.45) which
+    are inside, but adding extreme rungs 0.5 / 1.5 should be filtered out.
+    """
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    frame = _toy_frame(n=100)
+    modeling = {
+        "controls_used": ["tpr_share", "log_distribution_acv"],
+        "per_ppg": [
+            {
+                "ppg_id": "PPG_S",
+                "winner_model": "lightgbm",
+                "winner": {"model": "lightgbm", "coefficients": {}},
+                "attempts": [],
+                "sign_retry_fired": False,
+            }
+        ],
+    }
+    state = _seed_run(
+        tmp_path,
+        frame,
+        modeling,
+        options={
+            "optimization": {
+                # Include rungs well outside the [2.4, 3.6] envelope; max_decrease
+                # / max_increase widened so the guardrail isn't what filters them.
+                "price_ladder": [0.5, 0.85, 1.00, 1.15, 1.5],
+                "max_decrease": 0.6,
+                "max_increase": 0.6,
+                "margin_floor_pct": 0.0,
+                "comp_gap_pct": 1.0,
+            }
+        },
+    )
+    asyncio.run(OptimizationAgent().run(state))
+    results = json.loads((Path(state.run_dir) / "optimization_results.json").read_text())
+    clip = results[0]["envelope_clip"]
+    assert clip is not None
+    assert clip["ladder_clipped"] is True
+    assert 0.5 in clip["dropped_multipliers"]
+    assert 1.5 in clip["dropped_multipliers"]
+    # Recommendation must come from the kept rungs.
+    assert results[0]["milp"]["price_multiplier"] in clip["kept_multipliers"]
+    out = state.agents["optimization"].outputs
+    assert out["n_envelope_clipped"] == 1
+
+
+def test_optimization_skips_envelope_clip_for_ols(tmp_path: Path, monkeypatch) -> None:
+    """OLS winners must NOT get the LightGBM ladder-clip — they extrapolate
+    cleanly past the training envelope by construction."""
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    frame = _toy_frame()
+    modeling = {
+        "controls_used": ["tpr_share", "log_distribution_acv"],
+        "per_ppg": [
+            {
+                "ppg_id": "PPG_S",
+                "winner_model": "loglog_ols",
+                "winner": {"model": "loglog_ols", "coefficients": COEFS_ELASTIC},
+                "attempts": [],
+                "sign_retry_fired": False,
+            }
+        ],
+    }
+    state = _seed_run(
+        tmp_path,
+        frame,
+        modeling,
+        options={
+            "optimization": {
+                "price_ladder": [0.5, 1.5],
+                "max_decrease": 0.6,
+                "max_increase": 0.6,
+                "margin_floor_pct": 0.0,
+                "comp_gap_pct": 1.0,
+            }
+        },
+    )
+    asyncio.run(OptimizationAgent().run(state))
+    results = json.loads((Path(state.run_dir) / "optimization_results.json").read_text())
+    assert results[0]["envelope_clip"] is None
+    out = state.agents["optimization"].outputs
+    assert out["n_envelope_clipped"] == 0
+
+
 def test_optimization_agent_honours_options_override(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     frame = _toy_frame()

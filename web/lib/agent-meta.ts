@@ -154,6 +154,9 @@ export function summariseOutputs(
         typeof o.n_relaxed === "number" && o.n_relaxed > 0
           ? `${o.n_relaxed} relaxed`
           : "",
+        typeof o.n_envelope_clipped === "number" && o.n_envelope_clipped > 0
+          ? `${o.n_envelope_clipped} envelope-clipped`
+          : "",
       ].filter(Boolean);
     case "validation":
       return [

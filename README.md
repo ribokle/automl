@@ -405,3 +405,39 @@ uv run dbt deps --project-dir dbt/automl_dbt --profiles-dir dbt/automl_dbt
 - **LLM output looks templated** — `ANTHROPIC_API_KEY` is unset, so every
   agent is running its dry-run fallback. This is intentional and expected
   for cheap CI / smoke runs.
+
+## Caveats
+
+### LightGBM extrapolation past the training-price envelope
+
+LightGBM is a tree ensemble. Past the price range it actually saw during
+training, every tree flat-lines at its boundary leaf. That has two
+follow-on effects the system mitigates but cannot fully eliminate:
+
+1. **Wrong-sign elasticities on noisy data.** Without help, the booster
+   is free to learn locally-positive slopes in dense regions of the
+   training set, producing a positive own-price elasticity that the
+   downstream optimiser then chases. **Mitigation:** `fit_lightgbm`
+   (and the `Predictor` refit it shares with simulation / optimisation
+   / validation) sets `monotone_constraints=[-1, 0, ...]` so the model
+   is mathematically prevented from learning an increasing relationship
+   between `log_price` and `log_units`. See
+   `core/models/lightgbm_model.py`.
+
+2. **Implausible recommendations past the observed price range.** Even
+   with the monotone constraint, predictions stay flat outside the
+   training envelope — so the MILP can pick a ladder rung at the top
+   end of the configured ladder and claim "no units lost". **Mitigation:**
+   the optimisation agent clips the per-PPG price ladder to the
+   training-price envelope (`[min, max]` of observed `price` for that
+   PPG) for LightGBM winners only. OLS winners extrapolate cleanly so
+   they keep the full ladder. Clipped runs surface in the UI via an
+   "envelope" chip on the recommendation row and a top-level
+   `n_envelope_clipped` count on the optimisation card. See
+   `core/agents/optimization.py:_clip_ladder_to_envelope`.
+
+Neither fix is required for OLS winners (closed-form, sign-stable,
+well-defined extrapolation). Both apply only to LightGBM. If you raise
+`max_decrease` / `max_increase` aggressively for a LightGBM PPG you may
+see more rungs dropped — that is the system telling you it doesn't
+trust the model that far past the data.
