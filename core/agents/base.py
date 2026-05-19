@@ -115,6 +115,11 @@ class Agent:
         )
         return result
 
+    @staticmethod
+    def _is_dry_run(resp: LLMResponse) -> bool:
+        """True when the LLM client returned a deterministic dry-run payload."""
+        return bool(resp.raw.get("dry_run", False))
+
     async def _execute(self, run: RunState, result: AgentResult) -> None:  # pragma: no cover
         raise NotImplementedError
 

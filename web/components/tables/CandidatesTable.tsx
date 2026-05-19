@@ -37,9 +37,57 @@ function fmt(n: number | undefined | null, digits = 3): string {
   return n.toFixed(digits);
 }
 
+type AttemptRow = CandidateAttempt & { isWinner: boolean };
+
 function winnerAttempt(row: CandidatesRow): CandidateAttempt | undefined {
   return row.attempts.find((a) => a.model === row.winner_model);
 }
+
+const ATTEMPT_COLS: ColumnDef<AttemptRow>[] = [
+  {
+    key: "model",
+    label: "Model",
+    format: (a) => (
+      <span className="font-mono">
+        {MODEL_LABEL[a.model] ?? a.model}
+        {a.isWinner && (
+          <span className="ml-2 rounded border border-emerald-500/40 px-1 text-[9px] text-emerald-300">
+            winner
+          </span>
+        )}
+      </span>
+    ),
+  },
+  { key: "own_elasticity", label: "Elasticity", numeric: true, format: (a) => fmt(a.own_elasticity, 2) },
+  { key: "std_err", label: "Std err", numeric: true, format: (a) => fmt(a.std_err, 3) },
+  { key: "r_squared", label: "R²", numeric: true, format: (a) => fmt(a.r_squared, 2) },
+  {
+    key: "train_wape",
+    label: "Train WAPE",
+    numeric: true,
+    sortValue: (a) => a.diagnostics.train_wape ?? null,
+    format: (a) => fmt(a.diagnostics.train_wape, 3),
+  },
+  {
+    key: "test_wape",
+    label: "Test WAPE",
+    numeric: true,
+    sortValue: (a) => a.diagnostics.test_wape ?? null,
+    format: (a) => fmt(a.diagnostics.test_wape, 3),
+  },
+  {
+    key: "sign_ok",
+    label: "Sign",
+    align: "center",
+    sortValue: (a) => (a.sign_ok ? 1 : 0),
+    format: (a) =>
+      a.sign_ok ? (
+        <span className="text-emerald-300">✓</span>
+      ) : (
+        <span className="text-rose-300">✗</span>
+      ),
+  },
+];
 
 const COLUMNS: ColumnDef<CandidatesRow>[] = [
   { key: "ppg_id", label: "PPG" },
@@ -103,56 +151,23 @@ const COLUMNS: ColumnDef<CandidatesRow>[] = [
 ];
 
 function AttemptsList({ row }: { row: CandidatesRow }) {
+  const enriched: AttemptRow[] = row.attempts.map((a) => ({
+    ...a,
+    isWinner: a.model === row.winner_model,
+  }));
   return (
     <div className="space-y-1">
       <div className="text-[10px] uppercase tracking-wider text-slate-500">
         All candidates · sorted as fitted
       </div>
-      <table className="w-full text-[10.5px]">
-        <thead className="text-[9.5px] uppercase tracking-wider text-slate-600">
-          <tr>
-            <th className="px-2 py-1 text-left">Model</th>
-            <th className="px-2 py-1 text-right">Elasticity</th>
-            <th className="px-2 py-1 text-right">Std err</th>
-            <th className="px-2 py-1 text-right">R²</th>
-            <th className="px-2 py-1 text-right">Train WAPE</th>
-            <th className="px-2 py-1 text-right">Test WAPE</th>
-            <th className="px-2 py-1 text-center">Sign</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-slate-800/60">
-          {row.attempts.map((a) => {
-            const isWinner = a.model === row.winner_model;
-            return (
-              <tr
-                key={a.model}
-                className={isWinner ? "bg-emerald-500/5 text-slate-200" : "text-slate-400"}
-              >
-                <td className="px-2 py-1 font-mono">
-                  {MODEL_LABEL[a.model] ?? a.model}
-                  {isWinner && (
-                    <span className="ml-2 rounded border border-emerald-500/40 px-1 text-[9px] text-emerald-300">
-                      winner
-                    </span>
-                  )}
-                </td>
-                <td className="px-2 py-1 text-right font-mono">{fmt(a.own_elasticity, 2)}</td>
-                <td className="px-2 py-1 text-right font-mono">{fmt(a.std_err, 3)}</td>
-                <td className="px-2 py-1 text-right font-mono">{fmt(a.r_squared, 2)}</td>
-                <td className="px-2 py-1 text-right font-mono">{fmt(a.diagnostics.train_wape, 3)}</td>
-                <td className="px-2 py-1 text-right font-mono">{fmt(a.diagnostics.test_wape, 3)}</td>
-                <td className="px-2 py-1 text-center">
-                  {a.sign_ok ? (
-                    <span className="text-emerald-300">✓</span>
-                  ) : (
-                    <span className="text-rose-300">✗</span>
-                  )}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+      <ResultsTable
+        rows={enriched}
+        columns={ATTEMPT_COLS}
+        rowKey={(a) => a.model}
+        highlightKey={row.winner_model}
+        stickyFirst={false}
+        empty="No attempts recorded."
+      />
     </div>
   );
 }

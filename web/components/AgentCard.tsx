@@ -166,7 +166,7 @@ export function AgentCard({ runId, agent, index, status, events, agentState, isL
                 <ul className="space-y-1 font-mono text-[11px] text-slate-300">
                   {toolCalls.map((e, i) => (
                     <li key={i} className="flex justify-between gap-3">
-                      <span>{summariseTool(e.tool ?? "?", e as unknown as Record<string, unknown>)}</span>
+                      <span>{summariseTool(e.tool ?? "?", e)}</span>
                       <span className="text-slate-500">{new Date(e.ts).toLocaleTimeString()}</span>
                     </li>
                   ))}

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
+import { relativeTime } from "@/lib/agent-meta";
 import { listRuns } from "@/lib/api";
 import type { RunSummary } from "@/lib/types";
 
@@ -13,16 +14,6 @@ const STATUS_DOT: Record<string, string> = {
   failed: "bg-rose-500",
   pending: "bg-slate-500",
 };
-
-function relativeTime(iso: string): string {
-  const t = Date.parse(iso);
-  if (!Number.isFinite(t)) return "—";
-  const diff = (Date.now() - t) / 1000;
-  if (diff < 60) return `${Math.round(diff)}s`;
-  if (diff < 3600) return `${Math.round(diff / 60)}m`;
-  if (diff < 86400) return `${Math.round(diff / 3600)}h`;
-  return `${Math.round(diff / 86400)}d`;
-}
 
 interface Props {
   activeRunId: string;

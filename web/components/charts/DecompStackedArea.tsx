@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import { EChart } from "./EChart";
 
 export interface DecompWeekRow {
@@ -43,7 +44,7 @@ interface Props {
   height?: number;
 }
 
-export function DecompStackedArea({ data, height = 280 }: Props) {
+export const DecompStackedArea = memo(function DecompStackedArea({ data, height = 280 }: Props) {
   const weekly = data.weekly ?? [];
   if (!weekly.length) {
     return <p className="text-[11px] text-slate-500">No decomposition data.</p>;
@@ -59,7 +60,7 @@ export function DecompStackedArea({ data, height = 280 }: Props) {
   }
   const groups = GROUP_ORDER.filter((g) => presentGroups.has(g));
 
-  const series = groups.map((g) => ({
+  const series: Record<string, unknown>[] = groups.map((g) => ({
     name: g,
     type: "line",
     stack: "due",
@@ -76,13 +77,11 @@ export function DecompStackedArea({ data, height = 280 }: Props) {
     name: "observed",
     type: "line",
     showSymbol: false,
-    stack: undefined as never,
     smooth: true,
     lineStyle: { width: 1.5, color: "#e2e8f0" },
-    areaStyle: undefined as never,
     emphasis: { focus: "series" },
     data: observed,
-  } as never);
+  });
 
   const option = {
     grid: { left: 60, right: 24, top: 32, bottom: 30 },
@@ -114,4 +113,4 @@ export function DecompStackedArea({ data, height = 280 }: Props) {
   } as const;
 
   return <EChart option={option} height={height} data-chart="decomp-stacked-area" />;
-}
+});

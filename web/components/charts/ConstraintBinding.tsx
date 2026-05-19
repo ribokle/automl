@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import { EChart } from "./EChart";
 
 export interface ConstraintBindingRow {
@@ -30,7 +31,7 @@ interface Props {
  * close to zero indicate the cell is at the boundary — the constraint
  * is what stopped the optimiser from pushing further.
  */
-export function ConstraintBinding({ rows, height }: Props) {
+export const ConstraintBinding = memo(function ConstraintBinding({ rows, height }: Props) {
   if (!rows.length) {
     return (
       <p className="text-[11px] text-slate-500">
@@ -99,4 +100,4 @@ export function ConstraintBinding({ rows, height }: Props) {
       data-chart="constraint-binding"
     />
   );
-}
+});

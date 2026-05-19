@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import { EChart } from "./EChart";
 
 export interface ResidualRow {
@@ -54,7 +55,7 @@ function stddev(arr: number[]): number {
   return Math.sqrt(s / (n - 1));
 }
 
-export function ResidualHistogram({ data, bins = 18, height = 200 }: Props) {
+export const ResidualHistogram = memo(function ResidualHistogram({ data, bins = 18, height = 200 }: Props) {
   if (!data.residuals_log?.length) {
     return <p className="text-[11px] text-slate-500">No residuals.</p>;
   }
@@ -111,4 +112,4 @@ export function ResidualHistogram({ data, bins = 18, height = 200 }: Props) {
   } as const;
 
   return <EChart option={option} height={height} data-chart="residual-histogram" />;
-}
+});

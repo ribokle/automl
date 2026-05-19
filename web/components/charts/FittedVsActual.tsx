@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import { EChart } from "./EChart";
 
 export interface FittedVsActualRow {
@@ -45,7 +46,7 @@ interface Props {
   height?: number;
 }
 
-export function FittedVsActual({ data, height = 280 }: Props) {
+export const FittedVsActual = memo(function FittedVsActual({ data, height = 280 }: Props) {
   if (!data.observed_units.length) {
     return <p className="text-[11px] text-slate-500">No fitted-vs-actual data.</p>;
   }
@@ -141,4 +142,4 @@ export function FittedVsActual({ data, height = 280 }: Props) {
   } as const;
 
   return <EChart option={option} height={height} data-chart="fitted-vs-actual" />;
-}
+});

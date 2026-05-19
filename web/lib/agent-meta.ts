@@ -1,4 +1,4 @@
-import type { AgentName, AgentStatus } from "./types";
+import type { AgentName, AgentStatus, RunEvent } from "./types";
 
 export const AGENT_META: Record<AgentName, { title: string; description: string }> = {
   ingestion: {
@@ -185,7 +185,7 @@ export function summariseOutputs(
   }
 }
 
-export function summariseTool(tool: string, ev: Record<string, unknown>): string {
+export function summariseTool(tool: string, ev: RunEvent): string {
   const bits: string[] = [];
   if (typeof ev.rows === "number") bits.push(`${formatNumber(ev.rows)} rows`);
   if (typeof ev.checks === "number") bits.push(`${ev.checks} checks`);
@@ -193,6 +193,23 @@ export function summariseTool(tool: string, ev: Record<string, unknown>): string
   if (typeof ev.n_skus === "number") bits.push(`${ev.n_skus} SKUs`);
   if (typeof ev.n_ppgs === "number") bits.push(`${ev.n_ppgs} PPGs`);
   return bits.length ? `${tool} · ${bits.join(" · ")}` : tool;
+}
+
+export function fmtClock(iso: string | null): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleTimeString();
+}
+
+export function relativeTime(iso: string): string {
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return "—";
+  const diff = (Date.now() - t) / 1000;
+  if (diff < 60) return `${Math.round(diff)}s`;
+  if (diff < 3600) return `${Math.round(diff / 60)}m`;
+  if (diff < 86400) return `${Math.round(diff / 3600)}h`;
+  return `${Math.round(diff / 86400)}d`;
 }
 
 export function formatDuration(start?: string | null, end?: string | null): string | null {

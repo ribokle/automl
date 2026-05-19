@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import { EChart } from "./EChart";
 
 export interface SimCell {
@@ -25,7 +26,7 @@ interface Props {
   height?: number;
 }
 
-export function SimulationHeatmap({ data, metric = "revenue", height = 220 }: Props) {
+export const SimulationHeatmap = memo(function SimulationHeatmap({ data, metric = "revenue", height = 220 }: Props) {
   const cells = data.cells ?? [];
   if (!cells.length) {
     return <p className="text-[11px] text-slate-500">No simulation cells.</p>;
@@ -109,4 +110,4 @@ export function SimulationHeatmap({ data, metric = "revenue", height = 220 }: Pr
   } as const;
 
   return <EChart option={option} height={height} data-chart="simulation-heatmap" />;
-}
+});

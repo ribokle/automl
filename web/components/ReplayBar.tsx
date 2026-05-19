@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { fmtClock } from "@/lib/agent-meta";
 import type { AgentName, RunEvent } from "@/lib/types";
 
 interface Props {
@@ -22,13 +23,6 @@ const PHASE_COLOR: Record<string, string> = {
   run_started: "bg-sky-400",
   run_finished: "bg-emerald-500",
 };
-
-function fmtClock(iso: string | null): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleTimeString();
-}
 
 function fmtElapsed(ms: number): string {
   const s = Math.max(0, Math.round(ms / 1000));

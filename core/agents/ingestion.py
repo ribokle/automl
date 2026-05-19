@@ -150,7 +150,7 @@ class IngestionAgent(Agent):
         )
         findings: dict
         try:
-            findings = json.loads(llm_resp.text) if not llm_resp.raw.get("dry_run") else _dry_run_findings(profile, report, outliers)
+            findings = json.loads(llm_resp.text) if not self._is_dry_run(llm_resp) else _dry_run_findings(profile, report, outliers)
         except (json.JSONDecodeError, ValueError):
             findings = _dry_run_findings(profile, report, outliers)
             findings["summary"] = f"[LLM returned non-JSON; using deterministic fallback] {findings['summary']}"

@@ -216,7 +216,7 @@ class AnthropicClient:
             raise RuntimeError(f"claude CLI timed out after {self.cli_timeout_s}s") from exc
         if proc.returncode != 0:
             raise RuntimeError(
-                f"claude CLI exited {proc.returncode}: {proc.stderr.strip()[:400]}"
+                f"claude CLI exited {proc.returncode}: {proc.stderr.strip()}"
             )
         try:
             data: dict[str, Any] = json.loads(proc.stdout)

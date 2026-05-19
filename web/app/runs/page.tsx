@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { relativeTime } from "@/lib/agent-meta";
 import { listRuns } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
@@ -10,16 +11,6 @@ const STATUS_STYLE: Record<string, string> = {
   failed: "border-rose-500/40 bg-rose-500/10 text-rose-300",
   pending: "border-slate-700 bg-slate-800 text-slate-400",
 };
-
-function relativeTime(iso: string): string {
-  const t = Date.parse(iso);
-  if (!Number.isFinite(t)) return "—";
-  const diff = (Date.now() - t) / 1000;
-  if (diff < 60) return `${Math.round(diff)}s ago`;
-  if (diff < 3600) return `${Math.round(diff / 60)}m ago`;
-  if (diff < 86400) return `${Math.round(diff / 3600)}h ago`;
-  return `${Math.round(diff / 86400)}d ago`;
-}
 
 export default async function RunsPage() {
   let runs: Awaited<ReturnType<typeof listRuns>> = [];
@@ -73,7 +64,7 @@ export default async function RunsPage() {
                   </div>
                   <div className="flex shrink-0 items-center gap-3">
                     <span className="font-mono text-[11px] text-slate-500">
-                      {relativeTime(r.created_at)}
+                      {relativeTime(r.created_at)} ago
                     </span>
                     <span
                       className={`rounded border px-2 py-0.5 text-[10px] uppercase tracking-wider ${style}`}
