@@ -317,16 +317,64 @@ WAPE) on the modeling output and writes a flat one-row-per-PPG
 - `results_reasoning.json` + `model_choice_summary.json` written end-to-end. ✅
 - Selection logic verified via mocked fitters (no flaky data dependency). ✅
 
-### Phase 3b' — SHAP feature attribution + model-choice approval gate UI (pending)
-Carved out of the original 3b plan. Adds SHAP value summaries per PPG
-(beeswarm-ready dataset) and wires the existing default `modeling`
-approval gate to a model-choice modal in the UI showing the candidates
-table from `modeling_results.json`.
+### Phase 3b' — SHAP feature attribution + model-choice approval gate UI ✅
+**Status:** complete. Per-PPG SHAP-style attribution now lands on disk for
+every winner; the modeling AgentCard renders a sortable candidates table
+(winner row marked, every attempt expandable) plus a per-PPG mean-|SHAP|
+bar chart. The default `modeling` approval gate already pauses the run;
+this slice fills the previously-empty "what am I approving?" space with
+the candidates table + SHAP bar before the user clicks Approve/Reject.
+
+**Backend**
+- `core/models/shap_attribution.py` — two paths producing the same JSON
+  shape (`{base_value, mean_abs_shap, mean_shap, beeswarm, ...}`):
+  - LightGBM uses native `predict(X, pred_contrib=True)` — exact
+    tree-SHAP with no extra dependency.
+  - Log-log + semi-log use the linear identity centred on the train mean
+    (`shapᵢ = βᵢ·(xᵢ - x̄ᵢ)`), so `base + Σ shap == ŷ` row-wise.
+- Each fitter now stuffs a `diagnostics["shap"]` summary at fit time so
+  the agent doesn't have to refit just for attribution.
+- `core/agents/modeling.py` — `_collect_shap()` rolls the winner's SHAP
+  into a flat `shap_per_ppg.json` artifact; `result.outputs["n_shap"]`
+  surfaces the count on the AgentCard.
+
+**Frontend**
+- `web/components/charts/SHAPBar.tsx` — mean-|SHAP| horizontal bar; tint
+  green / blue by mean signed SHAP (positive / negative pressure on
+  log-units).
+- `web/components/tables/CandidatesTable.tsx` — per-PPG candidates table.
+  Click a row to select the PPG for the SHAP panel; expand to see all
+  attempted models (loglog / semilog-on-retry / lightgbm) with elasticity,
+  R², train + test WAPE, sign-ok flag. Winner row marked.
+- `web/components/AgentVisuals.tsx` — new `ModelingVisuals` panel ties
+  the table to the bar chart via local PPG selection state.
+- `web/components/AgentCard.tsx` — adds `modeling` to the visuals +
+  thinking sets so the panel surfaces alongside the existing
+  awaiting-approval footer.
+- `web/lib/agent-meta.ts` — modeling card now shows `n/n correct sign`,
+  retry count, SHAP-summary count chips.
+
+**Tests** (6 new + 1 extended; full unit suite: 73 passed)
+- `tests/unit/test_shap_attribution.py` — per-row reconstruction identity
+  for OLS (exact) and LightGBM (within 1e-6), mean |SHAP| sorted desc,
+  beeswarm sample cap, dominant-feature ranking on a clean DGP.
+- `tests/unit/test_modeling.py` — extended to assert `shap_per_ppg.json`
+  is written for every fit PPG with the expected sorted-shap shape.
+
+**Open follow-up surfaced by this slice**
+- The orchestrator's modeling agent sees zero rows per PPG on the
+  end-to-end smoke because `ppg_mapping.json` emits `PPG_AUTO_*` IDs
+  (LLM-generated) while `features.csv` still carries the
+  `synthetic.elasticity_spec.PPGS` IDs (`PPG01..08`). Unit tests pass
+  because they reseed `ppg_selection.json` with matching IDs. This is a
+  pre-existing PPG-pipeline issue (not a Phase 3b' regression) and is
+  the next thing to fix before Phase 3c so the modelling agent actually
+  produces fits on a real run.
 
 ### Phase 3c — Bayesian hierarchical + elasticity chart UI (pending)
 PyMC hierarchical model partial-pooling across PPGs (Numpyro backend for
 compile speed), and the inline elasticity-with-error-bars chart in the
-modeling AgentCard. Wires the existing model-choice gate to the UI.
+modeling AgentCard.
 
 ## Phase 4 — Decomposition + Simulation ✅ (backend slice)
 Decomp + sim tools, two agents, stacked-bar (due-to) + scenario-grid heatmap UI. Verify decomposition reconciles to observed.

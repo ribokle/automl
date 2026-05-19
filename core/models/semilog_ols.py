@@ -19,6 +19,7 @@ import statsmodels.api as sm
 
 from core.models.base import ElasticityFit
 from core.models.metrics import wape_units
+from core.models.shap_attribution import ols_shap_summary
 
 
 TARGET = "log_units"
@@ -84,6 +85,7 @@ def fit_semilog(
         "beta_price": beta,
         "price_mean": p_mean,
         "train_wape": wape_units(y_train, model.predict(X_train)),
+        "shap": ols_shap_summary(coefs, train, cols),
     }
     if test is not None and len(test):
         test_p = _ensure_price(test)

@@ -20,6 +20,7 @@ from lightgbm import LGBMRegressor
 
 from core.models.base import ElasticityFit
 from core.models.metrics import wape_units
+from core.models.shap_attribution import lightgbm_shap_summary
 
 
 TARGET = "log_units"
@@ -94,6 +95,7 @@ def fit_lightgbm(
         "feature_importances": {
             c: float(v) for c, v in zip(cols, model.feature_importances_)
         },
+        "shap": lightgbm_shap_summary(model, X_train),
     }
     if test is not None and len(test):
         X_test, y_test = _design_xy(test, cols)

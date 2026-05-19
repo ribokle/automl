@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { getArtifact } from "@/lib/api";
 import { CorrHeatmap, type CorrData } from "./charts/CorrHeatmap";
 import { CoverageHeatmap, type CoverageData } from "./charts/CoverageHeatmap";
@@ -14,8 +14,10 @@ import {
 import { PPGPriceBox, type PriceBoxData } from "./charts/PPGPriceBox";
 import { EligibilityBars, type EligibilityData } from "./charts/EligibilityBars";
 import { VIFBar } from "./charts/VIFBar";
+import { SHAPBar, type SHAPSummary } from "./charts/SHAPBar";
 import { PPGTabs } from "./PPGTabs";
 import { PPGTable } from "./PPGTable";
+import { CandidatesTable, type CandidatesRow } from "./tables/CandidatesTable";
 import { DataPreview, type ProfileBlob } from "./tables/DataPreview";
 import { DropLog, KeptList, type DropLogData } from "./tables/DropLog";
 import { SchemaTable } from "./tables/SchemaTable";
@@ -76,6 +78,8 @@ export function AgentVisuals(props: Props) {
       return <FeatureEngineeringVisuals {...props} />;
     case "feature_refine":
       return <FeatureRefineVisuals {...props} />;
+    case "modeling":
+      return <ModelingVisuals {...props} />;
     default:
       return null;
   }
@@ -244,6 +248,65 @@ interface RefineReport {
   max_abs_corr: number;
   vif_threshold: number;
   passes_thresholds: boolean;
+}
+
+interface ModelingResults {
+  controls_used: string[];
+  per_ppg: (CandidatesRow & {
+    winner: { diagnostics: { shap?: SHAPSummary } } | null;
+  })[];
+  n_correct_sign: number;
+  n_retries: number;
+  n_total: number;
+  model_pool: string[];
+}
+
+interface ShapEntry {
+  ppg_id: string;
+  model: string;
+  shap: SHAPSummary;
+}
+
+function ModelingVisuals({ runId, ready }: Props) {
+  const results = useArtifact<ModelingResults>(runId, "modeling_results.json", ready);
+  const shapBlob = useArtifact<ShapEntry[]>(runId, "shap_per_ppg.json", ready);
+  const rows = useMemo<CandidatesRow[]>(() => {
+    if (!results || "missing_columns" in results) return [];
+    return results.per_ppg.filter((r) => r.attempts && r.attempts.length > 0);
+  }, [results]);
+  const [selected, setSelected] = useState<string | null>(null);
+  useEffect(() => {
+    if (rows.length && (!selected || !rows.some((r) => r.ppg_id === selected))) {
+      setSelected(rows[0].ppg_id);
+    }
+  }, [rows, selected]);
+  if (!results && !shapBlob) return null;
+  const shapMap = new Map<string, ShapEntry>(
+    Array.isArray(shapBlob) ? shapBlob.map((s) => [s.ppg_id, s]) : [],
+  );
+  const selectedShap = selected ? shapMap.get(selected) : undefined;
+  return (
+    <div className="mt-4 space-y-5 border-t border-slate-800 pt-4">
+      <Section title={`Candidate fits per PPG (winners marked) · ${rows.length} PPGs`}>
+        {rows.length > 0 ? (
+          <CandidatesTable rows={rows} selectedPpg={selected} onSelectPpg={setSelected} />
+        ) : (
+          <p className="text-[11px] text-slate-500">No fits to display.</p>
+        )}
+      </Section>
+      {selectedShap && (
+        <Section
+          title={`Feature attribution · ${selectedShap.ppg_id} · ${selectedShap.shap.method === "tree_shap" ? "tree SHAP" : "centred OLS contribution"}`}
+        >
+          <p className="mb-2 text-[10.5px] text-slate-500">
+            Bars show mean |SHAP| for the winner ({selectedShap.model}). Blue =
+            feature pushes log-units down on average; green = pushes up.
+          </p>
+          <SHAPBar data={selectedShap.shap} />
+        </Section>
+      )}
+    </div>
+  );
 }
 
 function FeatureRefineVisuals({ runId, ready }: Props) {

@@ -167,6 +167,18 @@ class ModelingAgent(Agent):
         n_retries = sum(1 for r in per_ppg if r["sign_retry_fired"])
         n_skipped = sum(1 for r in per_ppg if r["winner_model"] == "skipped")
 
+        shap_rows = _collect_shap(per_ppg)
+        shap_path = run_dir / "shap_per_ppg.json"
+        shap_path.write_text(json.dumps(shap_rows, indent=2, default=float))
+        result.artifacts.append(
+            ArtifactRef(
+                path=str(shap_path),
+                mime="application/json",
+                agent=self.name,
+                name=shap_path.name,
+            )
+        )
+
         results_blob = {
             "controls_used": controls,
             "per_ppg": per_ppg,
@@ -220,6 +232,7 @@ class ModelingAgent(Agent):
             "n_retries": n_retries,
             "n_skipped": n_skipped,
             "winners_by_family": _winners_by_family(per_ppg),
+            "n_shap": len(shap_rows),
         }
         result.reasoning = narrative or (
             f"Recovered correct elasticity sign for {n_correct}/{len(per_ppg)} eligible PPGs; "
@@ -266,3 +279,28 @@ def _winners_by_family(per_ppg: list[dict]) -> dict[str, int]:
     for r in per_ppg:
         counts[r["winner_model"]] = counts.get(r["winner_model"], 0) + 1
     return counts
+
+
+def _collect_shap(per_ppg: list[dict]) -> list[dict]:
+    """Strip the winner's SHAP block out of diagnostics into a per-PPG list.
+
+    The candidates table can render mean |SHAP| for every PPG that produced
+    a real fit; we omit skipped PPGs and any winner whose fitter didn't emit
+    a SHAP block (defensive — every current fitter does).
+    """
+    rows: list[dict] = []
+    for r in per_ppg:
+        winner = r.get("winner")
+        if not winner:
+            continue
+        shap = winner.get("diagnostics", {}).get("shap")
+        if not shap:
+            continue
+        rows.append(
+            {
+                "ppg_id": r["ppg_id"],
+                "model": winner["model"],
+                "shap": shap,
+            }
+        )
+    return rows

@@ -210,3 +210,14 @@ def test_modeling_agent_writes_per_ppg_artifacts(
             assert row["n_obs"] > 0
             assert "own_elasticity" in row
             assert row["test_wape"] is not None and row["test_wape"] >= 0
+
+    shap_blob = json.loads((run_dir / "shap_per_ppg.json").read_text())
+    fit_ppg_ids = {row["ppg_id"] for row in compact if row["model"] != "skipped"}
+    assert {r["ppg_id"] for r in shap_blob} == fit_ppg_ids
+    for entry in shap_blob:
+        assert entry["model"] in {"loglog_ols", "semilog_ols", "lightgbm"}
+        assert entry["shap"]["n_features"] > 0
+        assert entry["shap"]["mean_abs_shap"]
+        # Mean |SHAP| must be sorted descending so the UI bar chart is stable.
+        values = [r["value"] for r in entry["shap"]["mean_abs_shap"]]
+        assert values == sorted(values, reverse=True)

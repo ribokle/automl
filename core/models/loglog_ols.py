@@ -13,6 +13,7 @@ import statsmodels.api as sm
 
 from core.models.base import ElasticityFit
 from core.models.metrics import wape_units
+from core.models.shap_attribution import ols_shap_summary
 
 
 PRICE_COL = "log_price"
@@ -63,6 +64,7 @@ def fit_loglog(
     }
     train_pred = model.predict(X_train)
     diagnostics["train_wape"] = wape_units(y_train, train_pred)
+    diagnostics["shap"] = ols_shap_summary(coefs, frame, cols)
     if test is not None and len(test):
         y_test, X_test = _design(test, cols)
         if len(y_test):

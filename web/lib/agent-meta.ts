@@ -135,6 +135,14 @@ export function summariseOutputs(
         typeof o.n_eligible === "number" ? `${o.n_eligible} eligible for modelling` : "",
         typeof o.mean_score === "number" ? `mean score ${Number(o.mean_score).toFixed(2)}` : "",
       ].filter(Boolean);
+    case "modeling":
+      return [
+        typeof o.n_total === "number" && typeof o.n_correct_sign === "number"
+          ? `${o.n_correct_sign}/${o.n_total} correct sign`
+          : "",
+        typeof o.n_retries === "number" ? `${o.n_retries} semi-log retries` : "",
+        typeof o.n_shap === "number" ? `${o.n_shap} SHAP summaries` : "",
+      ].filter(Boolean);
     default:
       return Object.entries(o)
         .slice(0, 4)

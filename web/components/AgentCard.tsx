@@ -20,6 +20,7 @@ const VISUALS_AGENTS: ReadonlySet<AgentName> = new Set([
   "eda",
   "feature_engineering",
   "feature_refine",
+  "modeling",
 ] as const);
 
 const LLM_AGENTS: ReadonlySet<AgentName> = new Set([
@@ -30,6 +31,7 @@ const LLM_AGENTS: ReadonlySet<AgentName> = new Set([
   "eda",
   "feature_engineering",
   "feature_refine",
+  "modeling",
 ] as const);
 
 interface Props {

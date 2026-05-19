@@ -28,6 +28,7 @@ web/node_modules/
 web/.next/
 web/out/
 web/.turbo/
+web/tsconfig.tsbuildinfo
 *.log
 
 # Env
