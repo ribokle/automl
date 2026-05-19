@@ -14,6 +14,7 @@ from core.agents.feature_engineering import FeatureEngineeringAgent
 from core.agents.feature_refine import FeatureRefineAgent
 from core.agents.feature_selection import FeatureSelectionAgent
 from core.agents.ingestion import IngestionAgent
+from core.agents.insights import InsightsAgent
 from core.agents.modeling import ModelingAgent
 from core.agents.optimization import OptimizationAgent
 from core.agents.ppg_mapping import PPGMappingAgent
@@ -40,6 +41,7 @@ REAL_AGENTS: dict[str, type[Agent]] = {
     "simulation": SimulationAgent,
     "optimization": OptimizationAgent,
     "validation": ValidationAgent,
+    "insights": InsightsAgent,
 }
 
 

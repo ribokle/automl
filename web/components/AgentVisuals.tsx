@@ -30,14 +30,16 @@ import {
   type TargetRelationshipRow,
 } from "./tables/TargetRelationship";
 import { ValidationTable, type ValidationRow } from "./tables/ValidationTable";
+import { InsightsSummary, type InsightsSummaryBlob } from "./tables/InsightsSummary";
 import { ConstraintEditor, type ConstraintsBlob } from "./ConstraintEditor";
-import type { AgentName, RunEvent } from "@/lib/types";
+import type { AgentName, AgentState, RunEvent } from "@/lib/types";
 
 interface Props {
   runId: string;
   agent: AgentName;
   ready: boolean;
   events: RunEvent[];
+  agentState?: AgentState;
 }
 
 type Loaded<T> = T | null | { missing_columns: string[] };
@@ -88,6 +90,8 @@ export function AgentVisuals(props: Props) {
       return <OptimizationVisuals {...props} />;
     case "validation":
       return <ValidationVisuals {...props} />;
+    case "insights":
+      return <InsightsVisuals {...props} />;
     default:
       return null;
   }
@@ -347,6 +351,19 @@ function OptimizationVisuals({ runId, ready }: Props) {
           <ConstraintEditor runId={runId} current={c} />
         </Section>
       )}
+    </div>
+  );
+}
+
+function InsightsVisuals({ runId, ready, agentState }: Props) {
+  const summary = useArtifact<InsightsSummaryBlob>(runId, "insights_summary.json", ready);
+  if (!summary || "missing_columns" in summary) return null;
+  const hasPdf = Boolean(agentState?.artifacts?.some((a) => a.name === "report.pdf"));
+  return (
+    <div className="mt-4 border-t border-slate-800 pt-4">
+      <Section title="Executive summary">
+        <InsightsSummary runId={runId} data={summary} hasPdf={hasPdf} />
+      </Section>
     </div>
   );
 }

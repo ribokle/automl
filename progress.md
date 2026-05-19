@@ -680,4 +680,73 @@ time windows even though point-WAPE looks fine).
 ## Phase 6 — Insights + Report + Polish
 Insights agent, HTML + PDF report (jinja + weasyprint), cost dashboard, run replay, dark mode, error/retry states.
 
-**Status:** pending.
+**Status:** in progress (6a shipped; UI polish backlog still open).
+
+### Phase 6a — Insights agent + HTML/PDF report + cost dashboard ✅
+**Status:** complete. The previously-stubbed `insights` agent now reads
+every upstream artefact, builds a structured executive payload, and
+renders the same content as both a self-contained HTML report and a
+WeasyPrint-generated PDF. A per-run cost rollup (per-agent tokens,
+USD, duration) lands on disk alongside the report and surfaces as a
+collapsible dashboard at the bottom of the run page.
+
+End-to-end on the synthetic panel: 4 PPGs optimised (3 feasible / 1
+relaxed), 2/4 validation pass, ~$378k recommended revenue, report
+PDF ≈ 35 kB, total pipeline ≈ 12 s wall-clock in dry-run mode.
+
+**Backend**
+- `core/report/builder.py` + `core/report/templates/report.html.j2` —
+  Jinja env with currency / pct / signed-pct / num filters; A4-print
+  CSS embedded in the template head; `build_html(payload)` →
+  `build_pdf(html)` two-step pipeline. WeasyPrint import is deferred
+  so the lightweight HTML path stays cheap.
+- `core/llm/cost.py` — extends the existing per-call estimator with a
+  run-level `summarise_run(run)` that rolls
+  `tokens_in / tokens_out / cost_usd / duration` off every
+  `AgentResult` into a typed `AgentCost[]` + `CostTotals`.
+- `core/agents/insights.py` — `InsightsAgent`: indexes
+  `optimization_table`, `validation_table`,
+  `model_choice_summary`, `decomposition_table`, and
+  `optimization_constraints` by PPG, asks the LLM for an exec headline
+  + per-PPG rationales (dry-run fallback emits deterministic strings),
+  writes `insights_summary.json`, `cost_summary.json`,
+  `report.html`, and `report.pdf`. PDF write is wrapped — if WeasyPrint
+  fails the agent still completes with `outputs.pdf=false`.
+- `core/orchestrator/runner.py` — replaces the StubAgent for the
+  `insights` stage with the real `InsightsAgent`.
+- Adds `jinja2>=3.1.6` + `weasyprint>=68.1` to `pyproject.toml`.
+
+**Frontend**
+- `web/components/tables/InsightsSummary.tsx` — exec headline, four KPI
+  tiles, HTML/PDF download buttons, per-PPG recommendation table with
+  verdict pills + signed delta colouring.
+- `web/components/CostDashboard.tsx` — collapsible per-agent table
+  (tokens in/out, USD, duration) with a totals row; rendered between
+  the run timeline and the artifact gallery. Shows a "dry-run, no
+  tokens recorded" hint when no agent spent money.
+- `web/components/AgentVisuals.tsx` + `AgentCard.tsx` — adds
+  `insights` to the visuals + LLM-thinking allowlists; `AgentVisuals`
+  now receives `agentState` so the insights panel can detect whether
+  the PDF actually wrote and hide the download button on PDF failure.
+- `web/components/RunTimeline.tsx` — wires `CostDashboard` in.
+- `web/lib/agent-meta.ts` — insights card chips: PPGs reported,
+  recommended revenue, recommended margin, HTML+PDF / HTML-only.
+
+**Tests** (6 new; full unit suite 123 passed)
+- `tests/unit/test_insights.py` — `build_html` renders every required
+  section + signed-delta filter; `build_pdf` returns valid PDF bytes;
+  `InsightsAgent` writes all four artefacts end-to-end with seeded
+  upstream JSON; dry-run headline fallback fires when no API key;
+  `summarise_run` rolls per-agent tokens + USD + duration correctly.
+
+**Acceptance gate**
+- HTML + PDF report renders cleanly from real upstream artefacts. ✅
+- Cost dashboard sums per-agent tokens / cost / duration. ✅
+- Insights agent succeeds even when WeasyPrint can't run (HTML still
+  written, output flag surfaces the PDF failure). ✅
+
+### Phase 6b — UI polish + run replay (pending)
+Carry over the existing open follow-ups (better dark mode, polished
+empty / error states, navigation between runs without a full reload,
+shared `<ResultsTable>` component across cards) and add a run-replay
+control that scrubs through `events.jsonl`.

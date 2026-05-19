@@ -164,6 +164,17 @@ export function summariseOutputs(
           : "",
         typeof o.n_fail === "number" && o.n_fail > 0 ? `${o.n_fail} fail` : "",
       ].filter(Boolean);
+    case "insights":
+      return [
+        typeof o.n_ppgs === "number" ? `${o.n_ppgs} PPGs reported` : "",
+        typeof o.total_revenue === "number"
+          ? `revenue $${formatNumber(Number(o.total_revenue))}`
+          : "",
+        typeof o.total_margin === "number"
+          ? `margin $${formatNumber(Number(o.total_margin))}`
+          : "",
+        o.pdf === true ? "HTML + PDF" : o.pdf === false ? "HTML (PDF failed)" : "",
+      ].filter(Boolean);
     default:
       return Object.entries(o)
         .slice(0, 4)

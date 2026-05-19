@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Pricing &amp; Promo — Executive Report</title>
+  <style>
+    @page { size: A4; margin: 18mm 14mm; }
+    body { font: 11pt/1.45 -apple-system, "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif; color: #0f172a; margin: 0; }
+    h1 { font-size: 22pt; margin: 0 0 4pt; }
+    h2 { font-size: 14pt; margin: 18pt 0 6pt; border-bottom: 1pt solid #cbd5e1; padding-bottom: 2pt; }
+    h3 { font-size: 11.5pt; margin: 12pt 0 4pt; color: #334155; }
+    p { margin: 0 0 6pt; }
+    .meta { color: #475569; font-size: 9pt; margin-bottom: 14pt; }
+    .headline { background: #f1f5f9; border-left: 3pt solid #0f766e; padding: 10pt 12pt; border-radius: 3pt; margin: 8pt 0 16pt; }
+    .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8pt; margin-bottom: 12pt; }
+    .kpi { border: 1pt solid #e2e8f0; border-radius: 4pt; padding: 8pt 10pt; }
+    .kpi .label { font-size: 8pt; color: #64748b; text-transform: uppercase; letter-spacing: 0.04em; }
+    .kpi .value { font-size: 15pt; font-weight: 600; margin-top: 2pt; }
+    table { border-collapse: collapse; width: 100%; font-size: 9.5pt; margin-bottom: 8pt; }
+    th, td { padding: 5pt 7pt; text-align: left; border-bottom: 0.5pt solid #e2e8f0; }
+    th { background: #f8fafc; color: #475569; font-weight: 600; text-transform: uppercase; font-size: 8pt; letter-spacing: 0.04em; }
+    td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; font-family: "SF Mono", "Menlo", Consolas, monospace; }
+    .pill { display: inline-block; padding: 1pt 6pt; border-radius: 8pt; font-size: 8pt; font-weight: 600; text-transform: uppercase; }
+    .pill.pass { background: #dcfce7; color: #166534; }
+    .pill.warn { background: #fef9c3; color: #854d0e; }
+    .pill.fail { background: #fee2e2; color: #991b1b; }
+    .pill.relaxed { background: #fef9c3; color: #854d0e; }
+    .pill.feasible { background: #dcfce7; color: #166534; }
+    .delta-up { color: #166534; font-weight: 600; }
+    .delta-down { color: #991b1b; font-weight: 600; }
+    .ppg-card { border: 1pt solid #e2e8f0; border-radius: 4pt; padding: 8pt 10pt; margin-bottom: 8pt; }
+    .ppg-card .head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4pt; }
+    .ppg-card .head .id { font-family: "SF Mono", "Menlo", Consolas, monospace; font-weight: 600; }
+    .ppg-card .rationale { color: #334155; font-size: 9.5pt; margin-top: 4pt; }
+    .footer { color: #94a3b8; font-size: 8pt; margin-top: 18pt; text-align: center; }
+  </style>
+</head>
+<body>
+  <h1>Pricing &amp; Promo — Executive Report</h1>
+  <div class="meta">
+    Run <span class="mono">{{ run_id }}</span> · generated {{ generated_at }} · objective <strong>{{ objective }}</strong>
+  </div>
+
+  {% if headline %}
+  <div class="headline">{{ headline }}</div>
+  {% endif %}
+
+  <div class="grid">
+    <div class="kpi"><div class="label">PPGs optimised</div><div class="value">{{ kpis.n_optimised }}</div></div>
+    <div class="kpi"><div class="label">Strict feasible</div><div class="value">{{ kpis.n_feasible }} / {{ kpis.n_optimised }}</div></div>
+    <div class="kpi"><div class="label">Validation pass</div><div class="value">{{ kpis.n_pass }} / {{ kpis.n_validated }}</div></div>
+    <div class="kpi"><div class="label">Total recommended revenue</div><div class="value">{{ kpis.total_revenue | currency }}</div></div>
+  </div>
+
+  <h2>Recommendations</h2>
+  <p>Per-PPG ladder cells the MILP picked under the configured constraints (margin floor, competitive gap, move guardrail).</p>
+  <table>
+    <thead>
+      <tr>
+        <th>PPG</th>
+        <th class="num">Base</th>
+        <th class="num">Recommended</th>
+        <th class="num">Δ price</th>
+        <th>Promo</th>
+        <th class="num">Units</th>
+        <th class="num">Revenue</th>
+        <th class="num">Margin</th>
+        <th>Feasibility</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in recommendations %}
+      <tr>
+        <td class="mono">{{ r.ppg_id }}</td>
+        <td class="num">{{ r.base_price | currency }}</td>
+        <td class="num">{{ r.price | currency }}</td>
+        <td class="num">
+          {% set d = (r.price_multiplier - 1.0) %}
+          <span class="{% if d >= 0 %}delta-up{% else %}delta-down{% endif %}">{{ d | signed_pct }}</span>
+        </td>
+        <td>{{ "on" if r.promo == 1 else "off" }}</td>
+        <td class="num">{{ r.units | num(0) }}</td>
+        <td class="num">{{ r.revenue | currency }}</td>
+        <td class="num">{{ r.margin | currency }}</td>
+        <td>
+          {% if r.relaxed %}<span class="pill relaxed">relaxed</span>
+          {% else %}<span class="pill feasible">feasible</span>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <h2>Per-PPG narrative</h2>
+  {% for p in per_ppg %}
+  <div class="ppg-card">
+    <div class="head">
+      <span class="id">{{ p.ppg_id }}</span>
+      <span>
+        ε̂ {{ p.elasticity | num(2) }}
+        · validation <span class="pill {{ p.verdict }}">{{ p.verdict }}</span>
+      </span>
+    </div>
+    <div>
+      <strong>Recommend</strong>: price {{ p.recommended_price | currency }}
+      ({{ (p.price_multiplier - 1.0) | signed_pct }} vs base),
+      promo {{ "on" if p.promo == 1 else "off" }} →
+      revenue {{ p.revenue | currency }}, margin {{ p.margin | currency }}.
+      {% if p.relaxed %}<em>Note: comp-gap or margin-floor constraint relaxed.</em>{% endif %}
+    </div>
+    {% if p.rationale %}
+    <div class="rationale">{{ p.rationale }}</div>
+    {% endif %}
+  </div>
+  {% endfor %}
+
+  <h2>Validation</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>PPG</th>
+        <th>Verdict</th>
+        <th class="num">Sign stability</th>
+        <th class="num">Mean WAPE</th>
+        <th class="num">ε̂ mean</th>
+        <th class="num">ε̂ CV</th>
+        <th class="num">Folds</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for v in validation %}
+      <tr>
+        <td class="mono">{{ v.ppg_id }}</td>
+        <td><span class="pill {{ v.verdict }}">{{ v.verdict }}</span></td>
+        <td class="num">{{ v.sign_stability | pct(0) }}</td>
+        <td class="num">{{ v.wape_mean | pct(1) }}</td>
+        <td class="num">{{ v.elasticity_mean | num(2) }}</td>
+        <td class="num">{{ v.elasticity_cv | num(2) }}</td>
+        <td class="num">{{ v.n_folds }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {% if decomposition %}
+  <h2>Decomposition</h2>
+  <p>Share of incremental units attributed to each driver group, per PPG.</p>
+  <table>
+    <thead>
+      <tr>
+        <th>PPG</th>
+        <th>Group</th>
+        <th class="num">Due units</th>
+        <th class="num">Share of lift</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for d in decomposition %}
+      <tr>
+        <td class="mono">{{ d.ppg_id }}</td>
+        <td>{{ d.group }}</td>
+        <td class="num">{{ d.due_units | num(0) }}</td>
+        <td class="num">{{ d.share_of_lift | pct(1) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  <h2>Cost &amp; runtime</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Agent</th>
+        <th>Status</th>
+        <th class="num">Tokens in</th>
+        <th class="num">Tokens out</th>
+        <th class="num">Cost (USD)</th>
+        <th class="num">Duration</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for a in cost %}
+      <tr>
+        <td>{{ a.agent }}</td>
+        <td><span class="pill {{ 'pass' if a.status == 'done' else 'fail' if a.status == 'failed' else 'warn' }}">{{ a.status }}</span></td>
+        <td class="num">{{ a.tokens_in | num(0) }}</td>
+        <td class="num">{{ a.tokens_out | num(0) }}</td>
+        <td class="num">${{ "%.4f" | format(a.cost_usd) }}</td>
+        <td class="num">{{ a.duration_str }}</td>
+      </tr>
+      {% endfor %}
+      <tr>
+        <td><strong>Total</strong></td>
+        <td></td>
+        <td class="num"><strong>{{ cost_totals.tokens_in | num(0) }}</strong></td>
+        <td class="num"><strong>{{ cost_totals.tokens_out | num(0) }}</strong></td>
+        <td class="num"><strong>${{ "%.4f" | format(cost_totals.cost_usd) }}</strong></td>
+        <td class="num"><strong>{{ cost_totals.duration_str }}</strong></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="footer">automl · agentic price &amp; promo optimisation</div>
+</body>
+</html>

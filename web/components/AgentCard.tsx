@@ -23,6 +23,7 @@ const VISUALS_AGENTS: ReadonlySet<AgentName> = new Set([
   "modeling",
   "optimization",
   "validation",
+  "insights",
 ] as const);
 
 const LLM_AGENTS: ReadonlySet<AgentName> = new Set([
@@ -36,6 +37,7 @@ const LLM_AGENTS: ReadonlySet<AgentName> = new Set([
   "modeling",
   "optimization",
   "validation",
+  "insights",
 ] as const);
 
 interface Props {
@@ -172,7 +174,9 @@ export function AgentCard({ runId, agent, index, status, events, agentState, isL
               <div className="rounded bg-rose-950/40 px-2 py-1.5 text-[11px] text-rose-300">{errorText}</div>
             )}
             {hasThinking && <AgentThinking runId={runId} agent={agent} ready={open} />}
-            {hasVisuals && <AgentVisuals runId={runId} agent={agent} ready={open} events={events} />}
+            {hasVisuals && (
+              <AgentVisuals runId={runId} agent={agent} ready={open} events={events} agentState={agentState} />
+            )}
           </div>
         )}
 
