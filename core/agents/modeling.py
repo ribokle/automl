@@ -295,7 +295,7 @@ class ModelingAgent(Agent):
                 max_tokens=600,
                 label="elasticity-narrative",
             )
-            if resp.raw.get("dry_run"):
+            if self._is_dry_run(resp):
                 return "", []
             blob = json.loads(resp.text)
             return str(blob.get("narrative", "")), list(blob.get("concerns", []))

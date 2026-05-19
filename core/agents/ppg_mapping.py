@@ -108,7 +108,7 @@ class PPGMappingAgent(Agent):
         )
         rationales: dict
         try:
-            rationales = json.loads(llm_resp.text) if not llm_resp.raw.get("dry_run") else _dry_run_rationales(per_ppg_summary)
+            rationales = json.loads(llm_resp.text) if not self._is_dry_run(llm_resp) else _dry_run_rationales(per_ppg_summary)
         except (json.JSONDecodeError, ValueError):
             rationales = _dry_run_rationales(per_ppg_summary)
         rationale_lookup = {item["ppg_id"]: item for item in rationales.get("per_ppg", [])}
