@@ -12,22 +12,33 @@ import pandas as pd
 import statsmodels.api as sm
 
 from core.models.base import ElasticityFit
+from core.models.metrics import wape_units
 
 
 PRICE_COL = "log_price"
 TARGET = "log_units"
 
 
+def _design(frame: pd.DataFrame, cols: list[str]) -> tuple[np.ndarray, np.ndarray]:
+    sub = frame[[TARGET, *cols]].dropna()
+    y = sub[TARGET].astype(float).to_numpy()
+    X = sm.add_constant(sub[cols].astype(float).to_numpy(), has_constant="add")
+    return y, X
+
+
 def fit_loglog(
     ppg_id: str,
     frame: pd.DataFrame,
     controls: list[str],
+    test: pd.DataFrame | None = None,
 ) -> ElasticityFit:
     """Fit a log-log OLS for one PPG.
 
     ``frame`` must contain ``log_units`` + ``log_price`` + every column listed
     in ``controls``. Controls are filtered to those that actually vary on the
     slice (statsmodels chokes on perfectly collinear or constant regressors).
+    When ``test`` is supplied, hold-out WAPE on raw units is added to the
+    diagnostics dict so models can be ranked on equal footing.
     """
     if PRICE_COL not in frame.columns or TARGET not in frame.columns:
         raise ValueError(f"frame missing {PRICE_COL} or {TARGET}")
@@ -35,16 +46,29 @@ def fit_loglog(
     usable = [c for c in usable if frame[c].nunique(dropna=True) > 1]
 
     cols = [PRICE_COL] + usable
-    sub = frame[[TARGET, *cols]].dropna()
-    y = sub[TARGET].astype(float).to_numpy()
-    X = sm.add_constant(sub[cols].astype(float).to_numpy(), has_constant="add")
-    model = sm.OLS(y, X).fit()
+    y_train, X_train = _design(frame, cols)
+    model = sm.OLS(y_train, X_train).fit()
 
     coefs = dict(zip(["const", *cols], (float(v) for v in model.params)))
     own_idx = 1
     own_beta = float(model.params[own_idx])
     own_se = float(model.bse[own_idx])
     own_p = float(model.pvalues[own_idx])
+
+    diagnostics: dict = {
+        "aic": float(model.aic),
+        "bic": float(model.bic),
+        "adj_r_squared": float(model.rsquared_adj),
+        "log_price_mean": float(np.mean(frame[PRICE_COL])),
+    }
+    train_pred = model.predict(X_train)
+    diagnostics["train_wape"] = wape_units(y_train, train_pred)
+    if test is not None and len(test):
+        y_test, X_test = _design(test, cols)
+        if len(y_test):
+            test_pred = model.predict(X_test)
+            diagnostics["test_wape"] = wape_units(y_test, test_pred)
+            diagnostics["n_test"] = int(len(y_test))
 
     return ElasticityFit(
         ppg_id=ppg_id,
@@ -56,10 +80,5 @@ def fit_loglog(
         n_obs=int(model.nobs),
         controls=usable,
         coefficients=coefs,
-        diagnostics={
-            "aic": float(model.aic),
-            "bic": float(model.bic),
-            "adj_r_squared": float(model.rsquared_adj),
-            "log_price_mean": float(np.mean(sub[PRICE_COL])),
-        },
+        diagnostics=diagnostics,
     )

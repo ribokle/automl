@@ -2,6 +2,52 @@
 
 The build ships in 7 incremental phases. Each phase produces a runnable end-to-end slice so progress is demoable at every step.
 
+## 🔔 Open follow-ups (cross-phase, USER-REQUESTED REMINDERS)
+
+These are not blocking the phase plan — they're product-quality reminders
+to revisit once the modelling spine is in place. Treat them as a backlog
+the UI / modelling phases pull from.
+
+- **Build a better UI.** The current `web/` is functional but spartan.
+  Once Phase 6 starts (Insights + Polish), the run page needs: an
+  executive-summary card at the top, a polished dark mode, agent-card
+  status pills with better empty / error / approval-required states,
+  navigation between runs without a full reload, and consistent
+  typography / spacing across all agent cards.
+- **Improve the modelling solution.** Phase 3a–3c land the iterative
+  log-log → semi-log → LightGBM → PyMC stack, but the headline metrics
+  (sign recovery, magnitude band) are loose. Tighten: per-PPG
+  cross-validation (rolling-origin), elasticity confidence intervals
+  surfaced in the table, automatic feature interactions for the LightGBM
+  fitter, and a Bayesian-shrinkage option for small-N PPGs.
+- **More graphs in earlier and later phases.** Phase 2a-1/2a-2 added
+  charts for ingestion / PPG / EDA / features. The phases on either side
+  are still chart-poor:
+  - **Earlier:** ingestion should add a SKU-count-by-region map and a
+    promo-flag-by-week stacked bar; feature_selection should add a
+    coverage-vs-target heat-strip per candidate.
+  - **Later:** modelling should add a per-PPG fitted-vs-actual scatter
+    and a coefficient forest plot; decomposition should add a stacked
+    area for due-to over time; simulation should add a 2-D price/promo
+    contour plot per PPG; optimisation should add a constraint-binding
+    bar; validation should add a hold-out residual histogram.
+- **Output results should be shown in a table.** Every agent card
+  currently leads with prose + charts. Each card should ALSO render a
+  compact, sortable HTML table summarising the agent's per-PPG (or
+  per-feature, or per-check) output. The results_reasoning agent
+  already writes `model_choice_summary.json` (one row per PPG); make
+  that the template — every agent should produce a `*_summary.json`
+  matching the same row-shape contract so the same `<ResultsTable>`
+  component can render it.
+
+When tackling these, prefer extracting a shared `ResultsTable.tsx` (with
+sortable headers, sticky first column, severity colour-coding) over
+bespoke per-agent tables — that's the highest-leverage change for the
+"results in a table" reminder.
+
+---
+
+
 ## Phase 0 — Scaffolding ✅
 Discard `app.py`/`requirements.txt`. Add `pyproject.toml`, repo folders, Pydantic `RunState`/`AgentResult`/`ArtifactRef`, Pandera schema, synthetic data generator + seed script, `AnthropicClient` (with prompt caching + dry_run), orchestrator skeleton with SSE, FastAPI shell, Next.js shell rendering mocked events.
 
@@ -223,10 +269,59 @@ failure (monkeypatched log-log) that the agent recovers from end-to-end.
 - `modeling_results.json` + `elasticity_per_ppg.json` are on disk after
   the agent runs end-to-end. ✅
 
-### Phase 3b — LightGBM + SHAP + results-reasoning agent (pending)
-Adds LightGBM + SHAP per PPG so the agent can compare a non-parametric fit
-to the parametric ones, picks the best-by-WAPE model, and surfaces SHAP
-attribution. Plus the results-reasoning agent + model-choice approval gate.
+### Phase 3b — LightGBM + WAPE comparison + results-reasoning agent ✅
+**Status:** complete. The modeling agent now fits three candidates per
+eligible PPG (log-log, semi-log on sign-retry, LightGBM) on a chronological
+80/20 split, ranks them by hold-out WAPE, and writes per-PPG attempts +
+winner to `modeling_results.json`. A new `ResultsReasoningAgent` runs
+deterministic verdict checks (sign, magnitude band, R² floor, hold-out
+WAPE) on the modeling output and writes a flat one-row-per-PPG
+`model_choice_summary.json` for the UI table.
+
+**Backend**
+- `core/models/metrics.py` — `wape_units` (raw-units WAPE from log-scale
+  predictions) + `chronological_split` (time-aware 80/20).
+- `core/models/lightgbm_model.py` — LightGBM regressor; elasticity
+  recovered via numerical bump on `log_price` (Δ = log(1.01)) averaged
+  across rows; feature importances captured for the UI.
+- `core/models/loglog_ols.py` + `core/models/semilog_ols.py` — extended
+  to accept an optional `test` frame and record `test_wape` in
+  `diagnostics`.
+- `core/agents/modeling.py` — refactor: per-PPG split, fit all three
+  candidates (semi-log only on sign-retry), winner = lowest test WAPE
+  among sign-correct fits. `winners_by_family` surfaced in
+  `result.outputs`.
+- `core/agents/results_reasoning.py` — new agent; reads
+  `modeling_results.json`, emits `results_reasoning.json` (verdict per
+  PPG with check breakdown) + `model_choice_summary.json` (compact
+  table-shaped rows).
+- `core/orchestrator/runner.py` — registers `ResultsReasoningAgent` in
+  `REAL_AGENTS`. `results_reasoning` is now a real agent in the DAG.
+
+**Tests** (13 new, all green; full suite: 39 passed, 3 skipped)
+- `tests/unit/test_lightgbm_model.py` — sign recovery on a clean DGP,
+  feature-importance shape, WAPE matches a hand computation.
+- `tests/unit/test_results_reasoning.py` — pass / warn / fail verdicts
+  per check rule, table summary one-row-per-PPG.
+- `tests/unit/test_modeling.py` — selection logic tests (mocked
+  fitters): sign-retry path picks lowest-WAPE sign-correct candidate;
+  log-log-only path skips semi-log; CSV artefact assertions widened to
+  include `lightgbm` + `test_wape`.
+
+**Deps**
+- Add `lightgbm>=4.3` to `pyproject.toml`.
+
+**Acceptance gate**
+- 3-model pool reported in `modeling_results.model_pool`. ✅
+- `test_wape` recorded for every non-skipped winner. ✅
+- `results_reasoning.json` + `model_choice_summary.json` written end-to-end. ✅
+- Selection logic verified via mocked fitters (no flaky data dependency). ✅
+
+### Phase 3b' — SHAP feature attribution + model-choice approval gate UI (pending)
+Carved out of the original 3b plan. Adds SHAP value summaries per PPG
+(beeswarm-ready dataset) and wires the existing default `modeling`
+approval gate to a model-choice modal in the UI showing the candidates
+table from `modeling_results.json`.
 
 ### Phase 3c — Bayesian hierarchical + elasticity chart UI (pending)
 PyMC hierarchical model partial-pooling across PPGs (Numpyro backend for

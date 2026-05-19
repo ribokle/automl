@@ -91,37 +91,85 @@ def test_semilog_independently_recovers_sign(synthetic_features: pd.DataFrame) -
     assert correct >= 6, f"semi-log only recovered sign for {correct}/8 PPGs"
 
 
-def test_sign_retry_invokes_semilog_when_loglog_wrong(
+def test_sign_retry_and_wape_selection(
     tmp_path: Path,
     synthetic_features: pd.DataFrame,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """When log-log returns a positive sign, the agent must refit with
-    semi-log and record both attempts. We force the failure by patching
-    ``fit_loglog`` to flip the elasticity sign on one PPG, then assert the
-    retry fired and semi-log won."""
+    """Verify the modeling agent's selection logic in isolation: when
+    log-log returns the wrong sign, semi-log gets refitted, and the winner
+    is the lowest-test-WAPE sign-correct candidate among all three
+    families. All three fitters are mocked so the assertion is about the
+    routing, not the underlying numerics."""
     import core.agents.modeling as modeling_mod
     from core.models.base import ElasticityFit
 
-    original_loglog = modeling_mod.fit_loglog
-    target_ppg = "PPG01"
+    def _fit(model: str, elasticity: float, wape: float) -> ElasticityFit:
+        return ElasticityFit(
+            ppg_id="PPG01",
+            model=model,
+            own_elasticity=elasticity,
+            std_err=0.1,
+            p_value=0.001,
+            r_squared=0.9,
+            n_obs=80,
+            controls=["tpr_share"],
+            coefficients={},
+            diagnostics={"test_wape": wape, "n_test": 20},
+        )
 
-    def flipped(ppg_id: str, frame: pd.DataFrame, controls: list[str]) -> ElasticityFit:
-        real = original_loglog(ppg_id, frame, controls)
-        if ppg_id == target_ppg:
-            real.own_elasticity = abs(real.own_elasticity)  # force wrong sign
-        return real
-
-    monkeypatch.setattr(modeling_mod, "fit_loglog", flipped)
+    monkeypatch.setattr(modeling_mod, "fit_loglog", lambda *a, **kw: _fit("loglog_ols", 0.5, 0.20))
+    monkeypatch.setattr(modeling_mod, "fit_semilog", lambda *a, **kw: _fit("semilog_ols", -1.4, 0.14))
+    monkeypatch.setattr(modeling_mod, "fit_lightgbm", lambda *a, **kw: _fit("lightgbm", -1.1, 0.10))
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
 
-    state = _seed_run(tmp_path, synthetic_features, [target_ppg])
+    state = _seed_run(tmp_path, synthetic_features, ["PPG01"])
     asyncio.run(ModelingAgent().run(state))
     results = json.loads((Path(state.run_dir) / "modeling_results.json").read_text())
     [row] = results["per_ppg"]
     assert row["sign_retry_fired"] is True
-    assert row["winner_model"] == "semilog_ols"
+    assert len(row["attempts"]) == 3
+    # LightGBM has lowest WAPE among sign-correct -> winner.
+    assert row["winner_model"] == "lightgbm"
+    assert row["winner"]["sign_ok"] is True
+
+
+def test_skips_lightgbm_only_path_when_loglog_sign_ok(
+    tmp_path: Path,
+    synthetic_features: pd.DataFrame,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When log-log already has the right sign, semi-log does NOT get
+    fitted (sign_retry_fired stays False) and the comparison is between
+    log-log and LightGBM only."""
+    import core.agents.modeling as modeling_mod
+    from core.models.base import ElasticityFit
+
+    def _fit(model: str, elasticity: float, wape: float) -> ElasticityFit:
+        return ElasticityFit(
+            ppg_id="PPG01",
+            model=model,
+            own_elasticity=elasticity,
+            std_err=0.1,
+            p_value=0.001,
+            r_squared=0.85,
+            n_obs=80,
+            controls=[],
+            coefficients={},
+            diagnostics={"test_wape": wape, "n_test": 20},
+        )
+
+    monkeypatch.setattr(modeling_mod, "fit_loglog", lambda *a, **kw: _fit("loglog_ols", -2.0, 0.08))
+    monkeypatch.setattr(modeling_mod, "fit_lightgbm", lambda *a, **kw: _fit("lightgbm", -1.6, 0.15))
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+
+    state = _seed_run(tmp_path, synthetic_features, ["PPG01"])
+    asyncio.run(ModelingAgent().run(state))
+    results = json.loads((Path(state.run_dir) / "modeling_results.json").read_text())
+    [row] = results["per_ppg"]
+    assert row["sign_retry_fired"] is False
     assert len(row["attempts"]) == 2
+    assert row["winner_model"] == "loglog_ols"
 
 
 def _seed_run(tmp_path: Path, features: pd.DataFrame, eligible_ppgs: list[str]) -> RunState:
@@ -154,9 +202,11 @@ def test_modeling_agent_writes_per_ppg_artifacts(
 
     assert results["n_total"] == 8
     assert results["n_correct_sign"] >= 7
+    assert results["model_pool"] == ["loglog_ols", "semilog_ols", "lightgbm"]
     assert len(compact) == 8
     for row in compact:
-        assert row["model"] in {"loglog_ols", "semilog_ols", "skipped"}
+        assert row["model"] in {"loglog_ols", "semilog_ols", "lightgbm", "skipped"}
         if row["model"] != "skipped":
             assert row["n_obs"] > 0
             assert "own_elasticity" in row
+            assert row["test_wape"] is not None and row["test_wape"] >= 0
