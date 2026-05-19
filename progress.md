@@ -328,10 +328,78 @@ PyMC hierarchical model partial-pooling across PPGs (Numpyro backend for
 compile speed), and the inline elasticity-with-error-bars chart in the
 modeling AgentCard. Wires the existing model-choice gate to the UI.
 
-## Phase 4 — Decomposition + Simulation
+## Phase 4 — Decomposition + Simulation ✅ (backend slice)
 Decomp + sim tools, two agents, stacked-bar (due-to) + scenario-grid heatmap UI. Verify decomposition reconciles to observed.
 
-**Status:** pending.
+**Status:** backend complete; inline UI charts pending (tracked in
+"Open follow-ups → More graphs"). Per-row decomposition reconciles to
+the model's prediction within 1e-9 by construction; per-PPG aggregate
+reconciliation error stays < 1e-6 on the synthetic panel. Simulation
+grid produces monotone-in-price unit response and the expected
+boundary revenue maximum for elastic demand.
+
+### Phase 4a — Closed-form decomposition + OLS scenario grid ✅
+**Status:** complete.
+
+**Backend**
+- `core/decomp/due_to.py` — closed-form per-row decomposition for any
+  OLS coefficient dict. Splits each observed week into
+  ``base + Σ due-to-feature + residual``. Per-feature contributions
+  sum to ``(predicted - base)`` exactly (allocated by log-space share).
+  Residual = ``observed - predicted``.
+- `core/decomp/groups.py` — explicit feature → business-group mapping
+  (price / promo / distribution / competitor / seasonality / lags /
+  other). Unknown columns fall through to ``"other"`` so they're
+  surfaced rather than dropped.
+- `core/simulation/grid.py` — vectorised closed-form price × promo
+  sweep. 15 price multipliers × 2 promo states = 30 cells per PPG,
+  microseconds per PPG. Reports per-cell units / revenue / margin
+  plus the revenue-optimal and margin-optimal cell.
+- `core/agents/decomposition.py` — refits the winning OLS family on
+  the full feature frame (no holdout — every week must be attributed),
+  decomposes, and writes:
+  - `decomposition_per_ppg_week.json` — weekly grid per PPG with
+    `due_by_group` rolled up per business group.
+  - `decomposition_summary.json` — totals + per-feature + per-group
+    contributions + reconciliation diagnostic per PPG.
+  - `decomposition_table.json` — flat ``(ppg_id, group, due_units,
+    share_of_lift)`` rows for the UI's shared `<ResultsTable>`.
+- `core/agents/simulation.py` — reads the modelling agent's stored
+  coefficients (no refit needed), sweeps the grid per PPG, writes:
+  - `simulation_grid.json` — full per-cell grid per PPG.
+  - `simulation_summary.json` — best-revenue + best-margin cell per PPG.
+  - `simulation_table.json` — flat ``(ppg_id, objective, multiplier,
+    promo, value, units)`` rows.
+- `core/orchestrator/runner.py` — registers both new agents in
+  `REAL_AGENTS`; `decomposition` and `simulation` are now real DAG
+  stages.
+
+**LightGBM-winning PPGs** are skipped for now with a structured note
+(``result.outputs["skipped"]``). Closed-form decomposition isn't
+applicable; ablation-based decomposition + a LightGBM simulator land
+in the Phase 4b follow-up.
+
+**Tests** (13 new, all green; full suite 52 passed / 3 skipped)
+- `tests/unit/test_decomposition.py` — per-row reconciliation < 1e-9,
+  residual identity, group aggregation matches per-feature sum,
+  zero-lift edge case, summary reconciliation < 1e-9, agent writes
+  three artefacts, LightGBM winner skipped cleanly.
+- `tests/unit/test_simulation.py` — units monotone-decreasing in
+  price, revenue-optimal at grid boundary for elastic demand, TPR
+  lifts units, semi-log grid shape, agent writes three artefacts,
+  LightGBM winner skipped cleanly.
+
+**Acceptance gate**
+- Decomposition reconciles to predicted within 1e-6 per PPG. ✅
+- Simulation produces monotone-in-price unit curves. ✅
+- All three artefacts on disk per agent end-to-end. ✅
+
+### Phase 4b — Ablation decomposition + LightGBM simulator (pending)
+Adds numerical-ablation decomposition so LightGBM-winning PPGs aren't
+skipped, plus a LightGBM-backed simulator (persist trained models in
+Phase 3b, or refit in the agent). Also covers the inline stacked-bar
++ contour-heatmap UI charts called out in "Open follow-ups → More
+graphs (Later)".
 
 ## Phase 5 — Optimization + Validation
 Opt tools, constraint-elicitation gate, scipy continuous warm start → PuLP MILP with ladder/margin-floor/comp-gap, validation agent (holdout WAPE, elasticity reasonableness, stability), constraint editor + recommendation table UI.
