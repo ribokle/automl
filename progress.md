@@ -361,15 +361,19 @@ the candidates table + SHAP bar before the user clicks Approve/Reject.
 - `tests/unit/test_modeling.py` — extended to assert `shap_per_ppg.json`
   is written for every fit PPG with the expected sorted-shap shape.
 
-**Open follow-up surfaced by this slice**
-- The orchestrator's modeling agent sees zero rows per PPG on the
-  end-to-end smoke because `ppg_mapping.json` emits `PPG_AUTO_*` IDs
-  (LLM-generated) while `features.csv` still carries the
-  `synthetic.elasticity_spec.PPGS` IDs (`PPG01..08`). Unit tests pass
-  because they reseed `ppg_selection.json` with matching IDs. This is a
-  pre-existing PPG-pipeline issue (not a Phase 3b' regression) and is
-  the next thing to fix before Phase 3c so the modelling agent actually
-  produces fits on a real run.
+**Follow-up surfaced + resolved**
+- The orchestrator's modeling agent was seeing zero rows per PPG on the
+  end-to-end smoke because `ppg_mapping.json` emitted `PPG_AUTO_*` IDs
+  while `main.panel.ppg_id` (the source for `ppg_week_aggregate`) was
+  still the synthetic-truth labels (`PPG01..08`). Unit tests passed
+  because they reseed `ppg_selection.json` with matching IDs.
+  **Fixed:** the mapping agent now calls
+  `core.ppg.cluster.apply_mapping_to_panel` after clustering, which
+  rewrites `main.panel.ppg_id` from the SKU → PPG_AUTO_* assignments.
+  End-to-end smoke now produces real fits — modelling recovers correct
+  elasticity sign for 8/8 PPGs, results-reasoning passes 6/8,
+  hierarchical posterior pools 4 OLS winners with τ²≈1.1, decomposition
+  + simulation produce real artefacts for the OLS-winning PPGs.
 
 ### Phase 3c — Empirical-Bayes shrinkage + forest plot UI ✅
 **Status:** complete. Per-PPG OLS estimates are pooled with closed-form

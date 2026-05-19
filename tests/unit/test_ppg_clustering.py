@@ -55,3 +55,34 @@ def test_ppg_mapping_recovers_truth(synthetic_panel: tuple[Path, pd.DataFrame]) 
 
     # Confidence should be high on this clean synthetic dataset.
     assert assignments["confidence"].mean() >= 0.85
+
+
+def test_apply_mapping_rewrites_panel_ppg_id(synthetic_panel: tuple[Path, pd.DataFrame]) -> None:
+    """After ppg_mapping runs, main.panel.ppg_id must reflect the clusterer's
+    PPG_AUTO_* assignments, not the truth labels the panel was loaded with.
+    Otherwise downstream agents that group by main.panel.ppg_id see a
+    different label space than ppg_selection / ppg_mapping_table.json.
+    """
+    import duckdb
+
+    from core.ppg.cluster import apply_mapping_to_panel
+
+    duckdb_path, _df = synthetic_panel
+    sku_features = aggregate_sku_features(duckdb_path)
+    assignments = cluster_ppgs(sku_features)
+
+    n_rows = apply_mapping_to_panel(duckdb_path, assignments)
+    assert n_rows > 0
+
+    con = duckdb.connect(str(duckdb_path))
+    try:
+        panel_ppgs = set(
+            r[0] for r in con.execute("SELECT DISTINCT ppg_id FROM main.panel").fetchall()
+        )
+    finally:
+        con.close()
+
+    mapped_ppgs = set(assignments["ppg_id"].unique().tolist())
+    assert panel_ppgs == mapped_ppgs, (
+        f"panel ppg_ids {panel_ppgs} do not match mapping {mapped_ppgs}"
+    )
