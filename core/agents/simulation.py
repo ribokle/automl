@@ -1,14 +1,11 @@
 """Simulation agent.
 
-Sweeps a price × promo scenario grid per PPG using the winning OLS model
-from the modelling stage. The output is the warm-start dataset the
-optimisation agent consumes, and a what-if surface the UI can render as
-a heatmap (price multiplier × promo state -> revenue / margin / units).
-
-LightGBM-winning PPGs are skipped for now — the same follow-up that adds
-ablation decomposition will add the LightGBM simulator. Default
-modelling on the synthetic panel produces OLS winners for ~all PPGs so
-this is a minor gap.
+Sweeps a price × promo scenario grid per PPG. OLS winners use the
+closed-form simulator from :mod:`core.simulation.grid.simulate_ols_grid`;
+LightGBM winners go through a refit + booster-driven sweep via
+:func:`core.simulation.grid.simulate_predictor_grid`. The output is the
+warm-start dataset the optimisation agent consumes, and a what-if surface
+the UI renders as a heatmap.
 
 Outputs:
 - ``simulation_grid.json`` per-cell results per PPG.
@@ -24,6 +21,7 @@ from pathlib import Path
 import pandas as pd
 
 from core.agents.base import Agent
+from core.models.predictor import build_predictor
 from core.orchestrator.state import AgentResult, ArtifactRef, RunState
 from core.simulation.grid import (
     DEFAULT_PRICE_MULTIPLIERS,
@@ -31,6 +29,7 @@ from core.simulation.grid import (
     ScenarioGridSpec,
     grid_summary,
     simulate_ols_grid,
+    simulate_predictor_grid,
 )
 
 
@@ -45,6 +44,7 @@ JSON only. Cite only PPGs in the input."""
 
 
 SUPPORTED_OLS_MODELS = {"loglog_ols", "semilog_ols"}
+SUPPORTED_MODELS = SUPPORTED_OLS_MODELS | {"lightgbm"}
 
 
 def _load_modeling(run_dir: Path) -> dict:
@@ -104,12 +104,13 @@ def _base_price_for(ppg_id: str, slice_: pd.DataFrame, model_kind: str) -> float
 def _simulate_one(
     ppg_id: str,
     slice_: pd.DataFrame,
-    coefficients: dict[str, float],
+    modeling_row: dict,
+    controls: list[str],
     model_kind: str,
 ) -> tuple[pd.DataFrame, dict]:
     import numpy as np
 
-    if model_kind == "loglog_ols":
+    if model_kind in ("loglog_ols", "lightgbm"):
         log_base_price = (
             float(slice_["log_base_price"].mean()) if "log_base_price" in slice_.columns else 0.0
         )
@@ -117,13 +118,51 @@ def _simulate_one(
     else:
         base_price = float(slice_["price"].mean()) if "price" in slice_.columns else 1.0
 
+    if model_kind in SUPPORTED_OLS_MODELS:
+        coefficients = modeling_row.get("winner", {}).get("coefficients", {})
+        spec = ScenarioGridSpec(
+            price_multipliers=DEFAULT_PRICE_MULTIPLIERS,
+            promo_states=DEFAULT_PROMO_STATES,
+            context=_context_for_ppg(slice_, coefficients),
+        )
+        grid = simulate_ols_grid(coefficients, base_price, spec, model_kind=model_kind)
+        return grid, grid_summary(grid)
+
+    # LightGBM: refit on the training portion to mirror the modelling
+    # agent's holdout, then sweep via the predictor.
+    predictor = build_predictor(modeling_row, slice_, controls)
+    context = _context_for_predictor(slice_, predictor.feature_cols)
     spec = ScenarioGridSpec(
         price_multipliers=DEFAULT_PRICE_MULTIPLIERS,
         promo_states=DEFAULT_PROMO_STATES,
-        context=_context_for_ppg(slice_, coefficients),
+        context=context,
     )
-    grid = simulate_ols_grid(coefficients, base_price, spec, model_kind=model_kind)
+    grid = simulate_predictor_grid(predictor, base_price, spec)
     return grid, grid_summary(grid)
+
+
+def _context_for_predictor(slice_: pd.DataFrame, feature_cols: list[str]) -> dict[str, float]:
+    """Mean values for every feature column the predictor uses that isn't
+    being swept by the grid.
+    """
+    excluded = {
+        "tpr_share",
+        "display_share",
+        "feature_share",
+        "log_price",
+        "log_price_gap",
+        "log_base_price",
+        "price",
+    }
+    context: dict[str, float] = {}
+    for col in feature_cols:
+        if col in excluded:
+            continue
+        if col in slice_.columns:
+            context[col] = float(slice_[col].mean())
+    if "log_competitor_price" in slice_.columns:
+        context["log_competitor_price"] = float(slice_["log_competitor_price"].mean())
+    return context
 
 
 class SimulationAgent(Agent):
@@ -134,8 +173,8 @@ class SimulationAgent(Agent):
         feats = await asyncio.to_thread(_load_features, run_dir)
         modeling = await asyncio.to_thread(_load_modeling, run_dir)
 
-        # Use the same coefficients the modelling agent recorded so the
-        # simulation is consistent with the chosen winner without refitting.
+        controls_for_sim = modeling.get("controls_used", [])
+
         grids: list[dict] = []
         summaries: list[dict] = []
         table: list[dict] = []
@@ -145,7 +184,7 @@ class SimulationAgent(Agent):
             ppg_id = row["ppg_id"]
             winner = row.get("winner_model")
             slice_ = feats[feats["ppg_id"] == ppg_id]
-            if winner not in SUPPORTED_OLS_MODELS or slice_.empty:
+            if winner not in SUPPORTED_MODELS or slice_.empty:
                 skipped.append(
                     {
                         "ppg_id": ppg_id,
@@ -153,20 +192,21 @@ class SimulationAgent(Agent):
                         "reason": (
                             "no rows for PPG"
                             if slice_.empty
-                            else f"closed-form simulation not supported for {winner}"
+                            else f"simulation not supported for {winner}"
                         ),
                     }
                 )
                 continue
-            coefficients = row.get("winner", {}).get("coefficients", {})
-            if not coefficients:
-                skipped.append(
-                    {"ppg_id": ppg_id, "winner_model": winner, "reason": "no coefficients"}
-                )
-                continue
+            if winner in SUPPORTED_OLS_MODELS:
+                coefficients = row.get("winner", {}).get("coefficients", {})
+                if not coefficients:
+                    skipped.append(
+                        {"ppg_id": ppg_id, "winner_model": winner, "reason": "no coefficients"}
+                    )
+                    continue
 
             grid, summary = await asyncio.to_thread(
-                _simulate_one, ppg_id, slice_, coefficients, winner
+                _simulate_one, ppg_id, slice_, row, controls_for_sim, winner
             )
             await self.emit(
                 run,

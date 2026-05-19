@@ -70,6 +70,12 @@ class PPGOptInputs:
     ``competitor_price`` is optional — when ``None`` the competitive-gap
     constraint is skipped for this PPG. The agent fills this from the
     feature frame.
+
+    ``predictor`` is the unified
+    :class:`core.models.predictor.Predictor` for non-OLS winners. When set,
+    the optimisers route cell scoring through the predictor instead of
+    evaluating the closed-form OLS coefficients. OLS callers can leave it
+    ``None`` and continue using ``coefficients``.
     """
 
     ppg_id: str
@@ -78,3 +84,4 @@ class PPGOptInputs:
     base_price: float
     context: dict[str, float] = field(default_factory=dict)
     competitor_price: float | None = None
+    predictor: object | None = None

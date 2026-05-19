@@ -41,6 +41,7 @@ from pathlib import Path
 import pandas as pd
 
 from core.agents.base import Agent
+from core.models.predictor import build_predictor
 from core.optimization.constraints import OptimizationConstraints, PPGOptInputs
 from core.optimization.continuous import solve_continuous
 from core.optimization.milp import solve_milp
@@ -60,6 +61,7 @@ JSON only. Cite only PPGs in the input."""
 
 
 SUPPORTED_OLS_MODELS = {"loglog_ols", "semilog_ols"}
+SUPPORTED_MODELS = SUPPORTED_OLS_MODELS | {"lightgbm"}
 
 
 def _load_modeling(run_dir: Path) -> dict:
@@ -99,12 +101,13 @@ def _constraints_from_options(options: dict) -> OptimizationConstraints:
 def _build_inputs(
     ppg_id: str,
     slice_: pd.DataFrame,
-    coefficients: dict[str, float],
+    modeling_row: dict,
+    controls: list[str],
     model_kind: str,
 ) -> PPGOptInputs:
     import numpy as np
 
-    if model_kind == "loglog_ols":
+    if model_kind in ("loglog_ols", "lightgbm"):
         log_base_price = (
             float(slice_["log_base_price"].mean()) if "log_base_price" in slice_.columns else 0.0
         )
@@ -121,12 +124,26 @@ def _build_inputs(
         "log_base_price",
         "price",
     }
-    context: dict[str, float] = {}
-    for col in coefficients:
-        if col == "const" or col in excluded:
-            continue
-        if col in slice_.columns:
-            context[col] = float(slice_[col].mean())
+
+    if model_kind in SUPPORTED_OLS_MODELS:
+        coefficients = dict(modeling_row.get("winner", {}).get("coefficients", {}))
+        context: dict[str, float] = {}
+        for col in coefficients:
+            if col == "const" or col in excluded:
+                continue
+            if col in slice_.columns:
+                context[col] = float(slice_[col].mean())
+        predictor = None
+    else:  # lightgbm
+        coefficients = {}
+        predictor = build_predictor(modeling_row, slice_, controls)
+        context = {}
+        for col in predictor.feature_cols:
+            if col in excluded:
+                continue
+            if col in slice_.columns:
+                context[col] = float(slice_[col].mean())
+
     if "log_competitor_price" in slice_.columns:
         context["log_competitor_price"] = float(slice_["log_competitor_price"].mean())
 
@@ -145,6 +162,7 @@ def _build_inputs(
         base_price=base_price,
         context=context,
         competitor_price=competitor_price,
+        predictor=predictor,
     )
 
 
@@ -211,11 +229,13 @@ class OptimizationAgent(Agent):
         flat_table: list[dict] = []
         skipped: list[dict] = []
 
+        controls_for_opt = modeling.get("controls_used", [])
+
         for row in modeling.get("per_ppg", []):
             ppg_id = row["ppg_id"]
             winner = row.get("winner_model")
             slice_ = feats[feats["ppg_id"] == ppg_id]
-            if winner not in SUPPORTED_OLS_MODELS or slice_.empty:
+            if winner not in SUPPORTED_MODELS or slice_.empty:
                 skipped.append(
                     {
                         "ppg_id": ppg_id,
@@ -228,14 +248,15 @@ class OptimizationAgent(Agent):
                     }
                 )
                 continue
-            coefficients = row.get("winner", {}).get("coefficients", {})
-            if not coefficients:
-                skipped.append(
-                    {"ppg_id": ppg_id, "winner_model": winner, "reason": "no coefficients"}
-                )
-                continue
+            if winner in SUPPORTED_OLS_MODELS:
+                coefficients = row.get("winner", {}).get("coefficients", {})
+                if not coefficients:
+                    skipped.append(
+                        {"ppg_id": ppg_id, "winner_model": winner, "reason": "no coefficients"}
+                    )
+                    continue
 
-            inp = _build_inputs(ppg_id, slice_, coefficients, winner)
+            inp = _build_inputs(ppg_id, slice_, row, controls_for_opt, winner)
             payload = await asyncio.to_thread(_optimise_one, inp, constraints)
             per_ppg.append(payload)
             flat_table.append(

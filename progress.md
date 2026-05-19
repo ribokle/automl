@@ -422,15 +422,14 @@ in sub-millisecond time and is fully deterministic.
 - Forest plot renders shrinkage overlay against OLS baseline. ✅
 - LightGBM winners excluded from the pool (different SE semantics). ✅
 
-## Phase 4 — Decomposition + Simulation ✅ (backend slice)
+## Phase 4 — Decomposition + Simulation ✅
 Decomp + sim tools, two agents, stacked-bar (due-to) + scenario-grid heatmap UI. Verify decomposition reconciles to observed.
 
-**Status:** backend complete; inline UI charts pending (tracked in
-"Open follow-ups → More graphs"). Per-row decomposition reconciles to
-the model's prediction within 1e-9 by construction; per-PPG aggregate
-reconciliation error stays < 1e-6 on the synthetic panel. Simulation
-grid produces monotone-in-price unit response and the expected
-boundary revenue maximum for elastic demand.
+**Status:** complete (4a + 4b shipped). Inline UI charts still on the
+"Open follow-ups → More graphs" backlog. Per-row decomposition reconciles
+to the model's prediction within 1e-9 by construction; per-PPG aggregate
+reconciliation error stays < 1e-6 on the synthetic panel across **all 8
+PPGs** (was 4 before — Phase 4b unblocked the LightGBM winners).
 
 ### Phase 4a — Closed-form decomposition + OLS scenario grid ✅
 **Status:** complete.
@@ -488,12 +487,79 @@ in the Phase 4b follow-up.
 - Simulation produces monotone-in-price unit curves. ✅
 - All three artefacts on disk per agent end-to-end. ✅
 
-### Phase 4b — Ablation decomposition + LightGBM simulator (pending)
-Adds numerical-ablation decomposition so LightGBM-winning PPGs aren't
-skipped, plus a LightGBM-backed simulator (persist trained models in
-Phase 3b, or refit in the agent). Also covers the inline stacked-bar
-+ contour-heatmap UI charts called out in "Open follow-ups → More
-graphs (Later)".
+### Phase 4b — Ablation decomposition + LightGBM simulator/optimiser ✅
+**Status:** complete. LightGBM-winning PPGs are no longer dropped from
+the downstream pipeline. End-to-end on the synthetic panel: 4 OLS + 4
+LightGBM winners — all 8 now flow through decomposition, simulation,
+optimisation, and validation. Recommended revenue lifts from ~$378k
+(4 PPGs) to ~$589k (8 PPGs) on the synthetic dataset.
+
+**Backend**
+- `core/models/predictor.py` — shared `Predictor` abstraction. OLS path
+  evaluates the closed-form `α + Σ βᵢ·xᵢ` from saved coefficients;
+  LightGBM path refits the booster on the PPG's train slice
+  (deterministic via `random_state=0`) and wraps the trained estimator.
+  Both expose `predict_log` / `predict_units` so downstream agents stop
+  branching on `winner_model`.
+- `core/decomp/ablation.py` — group-wise ablation decomposition for
+  non-linear predictors. For each row: `pred_log =
+  predictor(observed)`, `base_log = predictor(reference)`, per-group
+  `delta_log = predictor(group_on, others_ref) - base_log`; allocates
+  unit lift across groups by `delta_log` share. Mirrors the OLS
+  reconciliation contract (`base + Σ due_group ≈ predicted`).
+- `core/simulation/grid.py` — adds `simulate_predictor_grid()` that
+  drives any `Predictor` through the price × promo sweep with the same
+  output shape as `simulate_ols_grid`.
+- `core/optimization/predict.py` — adds `cell_metrics_via_predictor()`
+  and `predict_units_via_predictor()` so the scipy + PuLP solvers can
+  score LightGBM cells the same way they score OLS cells.
+- `core/optimization/constraints.py` — `PPGOptInputs.predictor` field
+  lets the agent pass a fitted predictor without changing the OLS
+  call shape (existing OLS callers leave it `None`).
+- `core/optimization/continuous.py` + `milp.py` — route every cell
+  scoring through `_cell_metrics_for()` which dispatches on
+  `inp.predictor`.
+- `core/validation/rolling.py` — `fit_one_fold()` now handles
+  `model_kind="lightgbm"` (refits the booster per fold).
+- `core/agents/{decomposition,simulation,optimization,validation}.py`
+  — extend the `SUPPORTED_MODELS` set to include `"lightgbm"`; build
+  predictor via `core.models.predictor.build_predictor` for the new
+  branch; decomposition tags each summary with
+  `attribution_method ∈ {closed_form, ablation}` so the UI can label.
+
+**Tests** (3 new files + flipped 4 existing skip-assertions; full unit
+suite 135 passed)
+- `tests/unit/test_predictor.py` — OLS predictor matches closed-form
+  exactly; LightGBM predictor's bump-elasticity is negative on a clean
+  DGP; `test_ratio=0.0` trains on the full frame; OLS path uses saved
+  coefficients without refitting.
+- `tests/unit/test_ablation_decomp.py` — reference frame zeros dummies
+  + means continuous features + log_price baselines to log_base_price;
+  aggregate reconciliation `< 1e-6`; residual identity holds; zero
+  lift when at reference; price drives negative lift when above base.
+- `tests/unit/test_lightgbm_grid_and_milp.py` — LightGBM grid units
+  trend monotone-decreasing in price (regressed log-log slope < -0.5);
+  single-cell scoring matches grid sweep cell-by-cell; MILP picks a
+  ladder cell for the LightGBM predictor and feasibility holds.
+- Flipped `test_decomposition` / `test_simulation` /
+  `test_optimization` / `test_validation` LightGBM-skip assertions to
+  LightGBM-flows-through assertions.
+
+**Known limitation surfaced**
+- LightGBM extrapolates flat outside the training price range, so the
+  optimiser's MILP tends to pick the top of the price ladder for
+  LightGBM winners when revenue is the objective. This is a model
+  characteristic, not an optimiser bug — flagged here so future tuning
+  can either constrain LightGBM PPGs to the training-price envelope
+  or layer a guard band on top of the move guardrail.
+
+**Acceptance gate**
+- LightGBM-winning PPGs are no longer skipped by any downstream
+  stage. ✅
+- Ablation decomposition reconciles to predicted within 1e-6 on the
+  synthetic panel (matches OLS path). ✅
+- LightGBM simulator + MILP solve cleanly end-to-end. ✅
+- All 135 unit tests pass; end-to-end synthetic smoke green. ✅
 
 ## Phase 5 — Optimization + Validation ✅
 Opt tools, constraint-elicitation gate, scipy continuous warm start → PuLP MILP with ladder/margin-floor/comp-gap, validation agent (holdout WAPE, elasticity reasonableness, stability), constraint editor + recommendation table UI.

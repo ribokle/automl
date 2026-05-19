@@ -30,7 +30,32 @@ from dataclasses import dataclass
 import pulp
 
 from core.optimization.constraints import OptimizationConstraints, PPGOptInputs
-from core.optimization.predict import cell_metrics
+from core.optimization.predict import cell_metrics, cell_metrics_via_predictor
+
+
+def _cell_metrics_for(
+    inp: PPGOptInputs, c: OptimizationConstraints, multiplier: float, promo: int
+) -> dict[str, float]:
+    """Route to predictor-based scoring for non-OLS winners, closed-form otherwise."""
+    price = inp.base_price * multiplier
+    if inp.predictor is not None:
+        return cell_metrics_via_predictor(
+            inp.predictor,
+            inp.base_price,
+            price,
+            promo=int(promo),
+            cog_pct=c.cog_pct,
+            context=inp.context,
+        )
+    return cell_metrics(
+        inp.coefficients,
+        inp.base_price,
+        price,
+        promo=int(promo),
+        model_kind=inp.model_kind,
+        context=inp.context,
+        cog_pct=c.cog_pct,
+    )
 
 
 VIOLATION_PENALTY = 1e6  # large enough to dominate any per-cell objective value
@@ -86,15 +111,7 @@ def _all_cells(
     cells: list[dict] = []
     for mult in c.price_ladder:
         for promo in c.promo_states:
-            metrics = cell_metrics(
-                inp.coefficients,
-                inp.base_price,
-                inp.base_price * mult,
-                promo=int(promo),
-                model_kind=inp.model_kind,
-                context=inp.context,
-                cog_pct=c.cog_pct,
-            )
+            metrics = _cell_metrics_for(inp, c, mult, int(promo))
             slacks = _cell_feasibility(inp, c, mult)
             cells.append(
                 {

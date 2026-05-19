@@ -170,11 +170,12 @@ def test_validation_agent_writes_artifacts(tmp_path: Path, monkeypatch) -> None:
     assert report["per_ppg"][0]["n_folds"] >= 2
 
 
-def test_validation_agent_skips_lightgbm(tmp_path: Path, monkeypatch) -> None:
+def test_validation_agent_handles_lightgbm(tmp_path: Path, monkeypatch) -> None:
+    """LightGBM-winning PPGs are now rolling-CV'd via the LightGBM fitter."""
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    frame = _toy_frame(n=80)
+    frame = _toy_frame(n=100, slope=-2.0)
     modeling = {
-        "controls_used": [],
+        "controls_used": ["tpr_share", "log_distribution_acv"],
         "per_ppg": [
             {
                 "ppg_id": "PPG_V",
@@ -188,8 +189,11 @@ def test_validation_agent_skips_lightgbm(tmp_path: Path, monkeypatch) -> None:
     state = _seed_run(tmp_path, frame, modeling)
     asyncio.run(ValidationAgent().run(state))
     out = state.agents["validation"].outputs
-    assert out["n_validated"] == 0
-    assert out["n_skipped"] == 1
+    assert out["n_validated"] == 1
+    assert out["n_skipped"] == 0
+    table = json.loads((Path(state.run_dir) / "validation_table.json").read_text())
+    assert table[0]["winner"] == "lightgbm"
+    assert table[0]["verdict"] in ("pass", "warn", "fail")
 
 
 def test_validation_agent_honours_n_folds_override(tmp_path: Path, monkeypatch) -> None:

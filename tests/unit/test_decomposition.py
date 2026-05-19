@@ -194,14 +194,14 @@ def test_decomposition_agent_writes_three_artifacts(
     assert "promo" in groups_in_table
 
 
-def test_decomposition_agent_skips_lightgbm_winner(
+def test_decomposition_agent_decomposes_lightgbm_winner(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """LightGBM-winning PPGs should be recorded as skipped, not crash."""
+    """LightGBM-winning PPGs now go through ablation decomposition."""
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    frame = _toy_frame()
+    frame = _toy_frame(n=80)
     modeling = {
-        "controls_used": ["tpr_share"],
+        "controls_used": ["tpr_share", "log_distribution_acv"],
         "per_ppg": [
             {
                 "ppg_id": "PPG_T",
@@ -215,5 +215,13 @@ def test_decomposition_agent_skips_lightgbm_winner(
     state = _seed_run(tmp_path, frame, modeling)
     asyncio.run(DecompositionAgent().run(state))
     result = state.agents["decomposition"]
-    assert result.outputs["n_decomposed"] == 0
-    assert result.outputs["n_skipped"] == 1
+    assert result.outputs["n_decomposed"] == 1
+    assert result.outputs["n_skipped"] == 0
+
+    summary = json.loads(
+        (Path(state.run_dir) / "decomposition_summary.json").read_text()
+    )
+    assert summary[0]["attribution_method"] == "ablation"
+    # Per-row reconciliation is exact by construction; per-PPG aggregate
+    # error is just floating-point noise.
+    assert abs(summary[0]["reconciliation_pct_error"]) < 1e-6

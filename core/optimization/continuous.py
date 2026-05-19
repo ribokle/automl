@@ -18,7 +18,30 @@ from dataclasses import dataclass
 from scipy.optimize import minimize_scalar
 
 from core.optimization.constraints import OptimizationConstraints, PPGOptInputs
-from core.optimization.predict import cell_metrics
+from core.optimization.predict import cell_metrics, cell_metrics_via_predictor
+
+
+def _cell_metrics(inp: PPGOptInputs, c: OptimizationConstraints, multiplier: float, promo: int) -> dict[str, float]:
+    """Route to predictor-based scoring for non-OLS winners, closed-form otherwise."""
+    price = inp.base_price * multiplier
+    if inp.predictor is not None:
+        return cell_metrics_via_predictor(
+            inp.predictor,
+            inp.base_price,
+            price,
+            promo=int(promo),
+            cog_pct=c.cog_pct,
+            context=inp.context,
+        )
+    return cell_metrics(
+        inp.coefficients,
+        inp.base_price,
+        price,
+        promo=int(promo),
+        model_kind=inp.model_kind,
+        context=inp.context,
+        cog_pct=c.cog_pct,
+    )
 
 
 @dataclass
@@ -68,15 +91,7 @@ def solve_continuous(
         # The constraint set is empty — degrade gracefully by returning
         # base price; the MILP step will flag the relaxation.
         mid = max(min(1.0, hi), lo)
-        metrics = cell_metrics(
-            inp.coefficients,
-            inp.base_price,
-            inp.base_price * mid,
-            promo=int(c.promo_states[0]),
-            model_kind=inp.model_kind,
-            context=inp.context,
-            cog_pct=c.cog_pct,
-        )
+        metrics = _cell_metrics(inp, c, mid, int(c.promo_states[0]))
         return ContinuousResult(
             ppg_id=inp.ppg_id,
             price_multiplier=float(mid),
@@ -93,28 +108,11 @@ def solve_continuous(
     best: ContinuousResult | None = None
     for promo in c.promo_states:
         def neg_objective(m: float, promo: int = int(promo)) -> float:
-            metrics = cell_metrics(
-                inp.coefficients,
-                inp.base_price,
-                inp.base_price * m,
-                promo=promo,
-                model_kind=inp.model_kind,
-                context=inp.context,
-                cog_pct=c.cog_pct,
-            )
-            return -metrics[c.objective]
+            return -_cell_metrics(inp, c, m, promo)[c.objective]
 
         res = minimize_scalar(neg_objective, bounds=(lo, hi), method="bounded")
         m_star = float(res.x)
-        metrics = cell_metrics(
-            inp.coefficients,
-            inp.base_price,
-            inp.base_price * m_star,
-            promo=int(promo),
-            model_kind=inp.model_kind,
-            context=inp.context,
-            cog_pct=c.cog_pct,
-        )
+        metrics = _cell_metrics(inp, c, m_star, int(promo))
         candidate = ContinuousResult(
             ppg_id=inp.ppg_id,
             price_multiplier=m_star,

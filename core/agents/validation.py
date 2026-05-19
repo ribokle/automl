@@ -1,15 +1,12 @@
 """Validation agent.
 
 Runs rolling-origin (expanding-window) cross-validation on the winning
-OLS family from the modelling stage, then produces a per-PPG verdict
-(pass / warn / fail) over four checks: sign stability across folds,
-mean hold-out WAPE, elasticity coefficient-of-variation, and
-plausibility-band magnitude.
+model family from the modelling stage (log-log OLS, semi-log OLS, or
+LightGBM), then produces a per-PPG verdict (pass / warn / fail) over
+four checks: sign stability across folds, mean hold-out WAPE,
+elasticity coefficient-of-variation, and plausibility-band magnitude.
 
-LightGBM-winning PPGs and PPGs with no usable winner are skipped with a
-structured note — re-validating LightGBM requires retraining each fold
-which is significantly more expensive than the OLS refits and not
-needed for the Phase-5 acceptance gate.
+PPGs with no usable winner are skipped with a structured note.
 
 Outputs:
 
@@ -55,7 +52,7 @@ out the way it did. Return STRICT JSON:
 JSON only, no prose. Cite only PPGs present in the input."""
 
 
-SUPPORTED_OLS_MODELS = {"loglog_ols", "semilog_ols"}
+SUPPORTED_MODELS = {"loglog_ols", "semilog_ols", "lightgbm"}
 DEFAULT_N_FOLDS = 4
 
 
@@ -124,7 +121,7 @@ class ValidationAgent(Agent):
             ppg_id = row["ppg_id"]
             winner = row.get("winner_model")
             slice_ = feats[feats["ppg_id"] == ppg_id]
-            if winner not in SUPPORTED_OLS_MODELS or slice_.empty:
+            if winner not in SUPPORTED_MODELS or slice_.empty:
                 skipped.append(
                     {
                         "ppg_id": ppg_id,

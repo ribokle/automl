@@ -145,13 +145,14 @@ def test_simulation_agent_writes_three_artifacts(
     assert objectives == {"revenue", "margin"}
 
 
-def test_simulation_agent_skips_lightgbm(
+def test_simulation_agent_handles_lightgbm(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """LightGBM-winning PPGs now sweep the grid via the refit booster."""
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    frame = _toy_frame()
+    frame = _toy_frame(n=100)
     modeling = {
-        "controls_used": [],
+        "controls_used": ["tpr_share", "log_distribution_acv"],
         "per_ppg": [
             {
                 "ppg_id": "PPG_S",
@@ -165,5 +166,8 @@ def test_simulation_agent_skips_lightgbm(
     state = _seed_run(tmp_path, frame, modeling)
     asyncio.run(SimulationAgent().run(state))
     out = state.agents["simulation"].outputs
-    assert out["n_simulated"] == 0
-    assert out["n_skipped"] == 1
+    assert out["n_simulated"] == 1
+    assert out["n_skipped"] == 0
+    grid = json.loads((Path(state.run_dir) / "simulation_grid.json").read_text())
+    assert grid[0]["model_kind"] == "lightgbm"
+    assert len(grid[0]["cells"]) == len(DEFAULT_PRICE_MULTIPLIERS) * len(DEFAULT_PROMO_STATES)

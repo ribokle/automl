@@ -1,26 +1,24 @@
 """Decomposition agent.
 
-For each PPG whose winning model in the modelling stage is OLS-based,
-refits the winner on the full feature frame (no train/test split — we
-want all observed weeks attributed) and decomposes every observed week
-into ``base + due-to-driver_i + residual``. Aggregates per-feature
-contributions into business-friendly groups (price / promo /
-distribution / seasonality / competitor / lags / other) for the UI
-table.
+For every modelled PPG the agent refits the winning family on the full
+feature frame (no train/test split — every observed week must be
+attributed) and decomposes each week into
+``base + due-to-driver_i + residual``. Two attribution paths share one
+output shape:
 
-LightGBM-winning PPGs are skipped with a structured note: closed-form
-decomposition isn't applicable and full-frame ablation will land in a
-follow-up. The pipeline keeps moving — simulation + optimisation can
-still operate on the modelling output directly.
+- **OLS winners** use the closed-form log-space decomposition from
+  :mod:`core.decomp.due_to`. Per-feature granularity is available; group
+  rollups are exact.
+- **LightGBM winners** use the group-wise ablation in
+  :mod:`core.decomp.ablation`. There is no per-feature granularity (the
+  tree ensemble blends features non-linearly), but per-group share +
+  base/lift/residual reconciliation still hold by construction.
 
 Outputs (one file each, every one a JSON):
-- ``decomposition_per_ppg_week.json`` — weekly grid per PPG, every
-  driver's unit contribution + residual + reconciliation flag.
-- ``decomposition_summary.json`` — per-PPG totals + per-feature +
-  per-group contributions + reconciliation diagnostic.
-- ``decomposition_table.json`` — flat ``(ppg_id, group, units,
-  share_of_lift)`` rows; the canonical shape the UI's shared
-  ``<ResultsTable>`` renders.
+- ``decomposition_per_ppg_week.json`` — weekly grid per PPG.
+- ``decomposition_summary.json`` — per-PPG totals + group contributions.
+- ``decomposition_table.json`` — flat rows for the UI's
+  ``<ResultsTable>``.
 """
 from __future__ import annotations
 
@@ -31,6 +29,7 @@ from pathlib import Path
 import pandas as pd
 
 from core.agents.base import Agent
+from core.decomp.ablation import decompose_via_ablation, summarise_groups
 from core.decomp.due_to import (
     aggregate_to_groups,
     decompose_ols_frame,
@@ -38,6 +37,7 @@ from core.decomp.due_to import (
 )
 from core.decomp.groups import FEATURE_TO_GROUP, GROUP_ORDER, group_for
 from core.models.loglog_ols import fit_loglog
+from core.models.predictor import build_predictor
 from core.models.semilog_ols import fit_semilog
 from core.orchestrator.state import AgentResult, ArtifactRef, RunState
 
@@ -54,6 +54,7 @@ JSON only. Cite only PPGs that appear in the input."""
 
 
 SUPPORTED_OLS_MODELS = {"loglog_ols", "semilog_ols"}
+SUPPORTED_MODELS = SUPPORTED_OLS_MODELS | {"lightgbm"}
 
 
 def _load_features(run_dir: Path) -> pd.DataFrame:
@@ -89,16 +90,35 @@ def _refit_for_decomp(model_kind: str, ppg_id: str, frame: pd.DataFrame, control
 
 
 def _decompose_one_ppg(
-    ppg_id: str, frame: pd.DataFrame, controls: list[str], model_kind: str
+    ppg_id: str,
+    frame: pd.DataFrame,
+    controls: list[str],
+    model_kind: str,
+    modeling_row: dict,
 ) -> tuple[pd.DataFrame, dict]:
-    coefs = _refit_for_decomp(model_kind, ppg_id, frame, controls)
-    weekly = decompose_ols_frame(frame, coefs)
-    features = [c for c in coefs if c != "const"]
-    weekly = aggregate_to_groups(weekly, features, FEATURE_TO_GROUP)
-    summary = summarise_ppg(weekly, features, FEATURE_TO_GROUP)
-    summary["model_kind"] = model_kind
-    summary["coefficients"] = {k: float(v) for k, v in coefs.items()}
-    return weekly, summary
+    if model_kind in SUPPORTED_OLS_MODELS:
+        coefs = _refit_for_decomp(model_kind, ppg_id, frame, controls)
+        weekly = decompose_ols_frame(frame, coefs)
+        features = [c for c in coefs if c != "const"]
+        weekly = aggregate_to_groups(weekly, features, FEATURE_TO_GROUP)
+        summary = summarise_ppg(weekly, features, FEATURE_TO_GROUP)
+        summary["model_kind"] = model_kind
+        summary["coefficients"] = {k: float(v) for k, v in coefs.items()}
+        summary["attribution_method"] = "closed_form"
+        return weekly, summary
+
+    if model_kind == "lightgbm":
+        # Refit LightGBM on the FULL frame (no holdout) so every observed
+        # week is attributed.
+        predictor = build_predictor(modeling_row, frame, controls, test_ratio=0.0)
+        weekly = decompose_via_ablation(predictor, frame)
+        summary = summarise_groups(weekly)
+        summary["model_kind"] = model_kind
+        summary["coefficients"] = {}
+        summary["attribution_method"] = "ablation"
+        return weekly, summary
+
+    raise ValueError(f"unsupported model_kind={model_kind!r}")
 
 
 class DecompositionAgent(Agent):
@@ -119,7 +139,7 @@ class DecompositionAgent(Agent):
             ppg_id = row["ppg_id"]
             winner = row.get("winner_model")
             slice_ = feats[feats["ppg_id"] == ppg_id]
-            if winner not in SUPPORTED_OLS_MODELS or slice_.empty:
+            if winner not in SUPPORTED_MODELS or slice_.empty:
                 skipped.append(
                     {
                         "ppg_id": ppg_id,
@@ -127,7 +147,7 @@ class DecompositionAgent(Agent):
                         "reason": (
                             "no rows for PPG"
                             if slice_.empty
-                            else f"closed-form decomposition not supported for {winner}"
+                            else f"decomposition not supported for {winner}"
                         ),
                     }
                 )
@@ -139,6 +159,7 @@ class DecompositionAgent(Agent):
                 slice_,
                 controls_for_decomp,
                 winner,
+                row,
             )
             await self.emit(
                 run,
@@ -147,6 +168,7 @@ class DecompositionAgent(Agent):
                     "tool": "decompose_ppg",
                     "ppg_id": ppg_id,
                     "model_kind": winner,
+                    "method": summary.get("attribution_method"),
                     "reconciliation_pct_error": round(summary["reconciliation_pct_error"], 6),
                 },
             )

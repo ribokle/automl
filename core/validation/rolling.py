@@ -25,6 +25,7 @@ from dataclasses import dataclass
 
 import pandas as pd
 
+from core.models.lightgbm_model import fit_lightgbm
 from core.models.loglog_ols import fit_loglog
 from core.models.semilog_ols import fit_semilog
 
@@ -86,11 +87,13 @@ def fit_one_fold(
     controls: list[str],
     model_kind: str,
 ) -> dict:
-    """Refit the winning OLS family on one fold, return elasticity + WAPE."""
+    """Refit the winning model family on one fold, return elasticity + WAPE."""
     if model_kind == "loglog_ols":
         fit = fit_loglog(ppg_id, fold.train, controls, test=fold.test)
     elif model_kind == "semilog_ols":
         fit = fit_semilog(ppg_id, fold.train, controls, test=fold.test)
+    elif model_kind == "lightgbm":
+        fit = fit_lightgbm(ppg_id, fold.train, controls, test=fold.test)
     else:
         raise ValueError(f"unsupported model_kind={model_kind!r}")
     return {

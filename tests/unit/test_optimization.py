@@ -242,11 +242,12 @@ def test_optimization_agent_writes_three_artifacts(tmp_path: Path, monkeypatch) 
     assert results[0]["continuous"]["feasible"] is True
 
 
-def test_optimization_agent_skips_lightgbm(tmp_path: Path, monkeypatch) -> None:
+def test_optimization_agent_handles_lightgbm(tmp_path: Path, monkeypatch) -> None:
+    """LightGBM-winning PPGs are now optimised through the predictor path."""
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    frame = _toy_frame()
+    frame = _toy_frame(n=100)
     modeling = {
-        "controls_used": [],
+        "controls_used": ["tpr_share", "log_distribution_acv"],
         "per_ppg": [
             {
                 "ppg_id": "PPG_S",
@@ -260,8 +261,15 @@ def test_optimization_agent_skips_lightgbm(tmp_path: Path, monkeypatch) -> None:
     state = _seed_run(tmp_path, frame, modeling)
     asyncio.run(OptimizationAgent().run(state))
     out = state.agents["optimization"].outputs
-    assert out["n_optimised"] == 0
-    assert out["n_skipped"] == 1
+    assert out["n_optimised"] == 1
+    assert out["n_skipped"] == 0
+    results = json.loads((Path(state.run_dir) / "optimization_results.json").read_text())
+    assert results[0]["model_kind"] == "lightgbm"
+    # Recommended multiplier must come off the configured ladder.
+    constraints = json.loads(
+        (Path(state.run_dir) / "optimization_constraints.json").read_text()
+    )
+    assert results[0]["milp"]["price_multiplier"] in constraints["price_ladder"]
 
 
 def test_optimization_agent_honours_options_override(tmp_path: Path, monkeypatch) -> None:

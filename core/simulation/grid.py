@@ -119,6 +119,73 @@ def simulate_ols_grid(
     return pd.DataFrame(rows)
 
 
+def simulate_predictor_grid(
+    predictor,
+    base_price: float,
+    spec: ScenarioGridSpec,
+) -> pd.DataFrame:
+    """Sweep the price × promo grid for one PPG using a fitted ``Predictor``.
+
+    Works for both OLS and LightGBM winners — the predictor abstracts the
+    underlying functional form. The grid row builder mirrors
+    :func:`simulate_ols_grid`'s sweep: only ``log_price``,
+    ``log_price_gap`` (when in the model), ``log_base_price``, and the
+    listed promo features change per cell; everything else is held at the
+    context value (or zero if absent).
+    """
+    if base_price <= 0:
+        raise ValueError("base_price must be positive")
+
+    model_kind = predictor.model_kind
+    log_base_price = float(np.log(base_price))
+    cog = max(0.0, min(0.95, float(spec.cost_of_goods_pct)))
+
+    swept_price_cols: set[str] = (
+        {"log_price", "log_price_gap", "log_base_price"}
+        if model_kind in ("loglog_ols", "lightgbm")
+        else {"price"}
+    )
+
+    rows: list[dict] = []
+    grid_inputs: list[dict] = []
+    for mult, promo in product(spec.price_multipliers, spec.promo_states):
+        price = base_price * mult
+        row: dict[str, float] = dict(spec.context)
+        # Fill any model column not in context with 0.0 — predictor handles
+        # missing columns by zeroing them out, which matches log-units context.
+        for col in predictor.feature_cols:
+            if col not in row and col not in swept_price_cols and col not in spec.promo_features:
+                row[col] = 0.0
+        if model_kind in ("loglog_ols", "lightgbm"):
+            row["log_price"] = float(np.log(price))
+            row["log_base_price"] = log_base_price
+            row["log_price_gap"] = float(
+                np.log(price) - spec.context.get("log_competitor_price", log_base_price)
+            )
+        else:  # semilog_ols
+            row["price"] = float(price)
+        for col in spec.promo_features:
+            row[col] = float(promo)
+        grid_inputs.append({"mult": float(mult), "promo": int(promo), "price": price, **row})
+
+    feature_frame = pd.DataFrame(grid_inputs)
+    log_units = predictor.predict_log(feature_frame[predictor.feature_cols])
+    units = np.exp(log_units)
+    for i, info in enumerate(grid_inputs):
+        u = float(units[i])
+        rows.append(
+            {
+                "price_multiplier": info["mult"],
+                "price": float(info["price"]),
+                "promo": info["promo"],
+                "units": u,
+                "revenue": float(info["price"]) * u,
+                "margin": (float(info["price"]) - cog * base_price) * u,
+            }
+        )
+    return pd.DataFrame(rows)
+
+
 def grid_summary(grid: pd.DataFrame) -> dict:
     """Highlight the best price/promo cell by each objective."""
     if grid.empty:
