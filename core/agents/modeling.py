@@ -30,6 +30,7 @@ import pandas as pd
 from core.agents.base import Agent
 from core.features.engineering import ENGINEERED_COLUMNS, TARGET
 from core.models.base import ElasticityFit
+from core.models.bayes_hier import shrink, to_payload
 from core.models.lightgbm_model import fit_lightgbm
 from core.models.loglog_ols import fit_loglog
 from core.models.metrics import chronological_split
@@ -167,6 +168,18 @@ class ModelingAgent(Agent):
         n_retries = sum(1 for r in per_ppg if r["sign_retry_fired"])
         n_skipped = sum(1 for r in per_ppg if r["winner_model"] == "skipped")
 
+        posterior_payload = _compute_hierarchical(per_ppg)
+        posterior_path = run_dir / "hierarchical_posterior.json"
+        posterior_path.write_text(json.dumps(posterior_payload, indent=2, default=float))
+        result.artifacts.append(
+            ArtifactRef(
+                path=str(posterior_path),
+                mime="application/json",
+                agent=self.name,
+                name=posterior_path.name,
+            )
+        )
+
         shap_rows = _collect_shap(per_ppg)
         shap_path = run_dir / "shap_per_ppg.json"
         shap_path.write_text(json.dumps(shap_rows, indent=2, default=float))
@@ -233,6 +246,8 @@ class ModelingAgent(Agent):
             "n_skipped": n_skipped,
             "winners_by_family": _winners_by_family(per_ppg),
             "n_shap": len(shap_rows),
+            "n_shrunk": int(posterior_payload["n_studies"]),
+            "tau_squared": float(posterior_payload["tau_squared"]),
         }
         result.reasoning = narrative or (
             f"Recovered correct elasticity sign for {n_correct}/{len(per_ppg)} eligible PPGs; "
@@ -279,6 +294,28 @@ def _winners_by_family(per_ppg: list[dict]) -> dict[str, int]:
     for r in per_ppg:
         counts[r["winner_model"]] = counts.get(r["winner_model"], 0) + 1
     return counts
+
+
+def _compute_hierarchical(per_ppg: list[dict]) -> dict:
+    """Pool the per-PPG winners with empirical-Bayes shrinkage.
+
+    Only fits that report a finite std err contribute to the prior — that
+    drops LightGBM winners (whose std err is the across-row dispersion of
+    a numerical-derivative elasticity, not a sampling SE) and any skipped
+    PPGs. The agent surfaces both the OLS point estimate and the shrunken
+    posterior so the UI can render before/after.
+    """
+    triples: list[tuple[str, float, float]] = []
+    for r in per_ppg:
+        winner = r.get("winner")
+        if not winner:
+            continue
+        if winner["model"] not in ("loglog_ols", "semilog_ols"):
+            continue
+        triples.append(
+            (r["ppg_id"], float(winner["own_elasticity"]), float(winner["std_err"]))
+        )
+    return to_payload(shrink(triples))
 
 
 def _collect_shap(per_ppg: list[dict]) -> list[dict]:

@@ -371,10 +371,52 @@ the candidates table + SHAP bar before the user clicks Approve/Reject.
   the next thing to fix before Phase 3c so the modelling agent actually
   produces fits on a real run.
 
-### Phase 3c — Bayesian hierarchical + elasticity chart UI (pending)
-PyMC hierarchical model partial-pooling across PPGs (Numpyro backend for
-compile speed), and the inline elasticity-with-error-bars chart in the
-modeling AgentCard.
+### Phase 3c — Empirical-Bayes shrinkage + forest plot UI ✅
+**Status:** complete. Per-PPG OLS estimates are pooled with closed-form
+empirical-Bayes / Stein shrinkage; the modeling AgentCard now renders a
+forest plot showing OLS point ± 95% CI alongside the shrunken posterior
+± 95% CI, with the population mean μ̂ drawn as a reference line. No
+PyMC / no MCMC — DerSimonian-Laird method-of-moments τ² estimator runs
+in sub-millisecond time and is fully deterministic.
+
+**Backend**
+- `core/models/bayes_hier.py` — `shrink()` implements the random-effects
+  meta-analysis model ``β̂ᵢ | βᵢ ~ N(βᵢ, sᵢ²)``, ``βᵢ ~ N(μ, τ²)``. μ̂ is the
+  inverse-variance weighted mean; τ̂² is the DerSimonian-Laird MoM
+  estimator clamped at 0; each PPG's posterior is the inverse-variance
+  combination of likelihood and prior. Returns ``HierarchicalPosterior``
+  with point, shrunk_mean, 95% CI, shrinkage_weight per PPG.
+- `core/agents/modeling.py` — pools only OLS winners (LightGBM's
+  std_err is a row-dispersion, not a sampling SE, so it's excluded);
+  writes `hierarchical_posterior.json`; surfaces ``n_shrunk`` and
+  ``tau_squared`` in ``result.outputs``.
+
+**Frontend**
+- `web/components/charts/ElasticityForest.tsx` — custom ECharts forest
+  plot. Two series per PPG (OLS in grey, shrunken posterior in
+  emerald), sorted by OLS point estimate. Vertical zero line + dotted
+  μ̂ reference line; tooltip reports CI and shrinkage weight.
+- `web/components/AgentVisuals.tsx` — forest plot rendered above the
+  SHAP panel when posterior is non-empty.
+- `web/lib/agent-meta.ts` — modeling card now shows pooled-PPG count
+  and τ² alongside sign / retry / SHAP chips.
+
+**Tests** (8 new + 1 extended; full unit suite: 66 passed, 3 skipped)
+- `tests/unit/test_bayes_hier.py` — τ²=0 collapses to pooled mean,
+  real heterogeneity yields τ²>0 and partial shrinkage, noisy PPGs
+  shrink more than precise ones, posterior lies between point and
+  μ̂, CI is symmetric and uses ±1.96 z, non-finite/zero-SE rows
+  dropped, empty input returns nan population, payload exposes
+  required keys.
+- `tests/unit/test_modeling.py` — extended to assert
+  `hierarchical_posterior.json` is written, contains only OLS-winner
+  PPGs, and each shrunk_mean is bracketed by the point estimate and μ̂.
+
+**Acceptance**
+- Empirical-Bayes runs deterministically in sub-second time, no new
+  heavy deps (uses numpy only). ✅
+- Forest plot renders shrinkage overlay against OLS baseline. ✅
+- LightGBM winners excluded from the pool (different SE semantics). ✅
 
 ## Phase 4 — Decomposition + Simulation ✅ (backend slice)
 Decomp + sim tools, two agents, stacked-bar (due-to) + scenario-grid heatmap UI. Verify decomposition reconciles to observed.

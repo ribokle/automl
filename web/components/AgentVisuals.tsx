@@ -15,6 +15,7 @@ import { PPGPriceBox, type PriceBoxData } from "./charts/PPGPriceBox";
 import { EligibilityBars, type EligibilityData } from "./charts/EligibilityBars";
 import { VIFBar } from "./charts/VIFBar";
 import { SHAPBar, type SHAPSummary } from "./charts/SHAPBar";
+import { ElasticityForest, type PosteriorBlob } from "./charts/ElasticityForest";
 import { PPGTabs } from "./PPGTabs";
 import { PPGTable } from "./PPGTable";
 import { CandidatesTable, type CandidatesRow } from "./tables/CandidatesTable";
@@ -270,6 +271,7 @@ interface ShapEntry {
 function ModelingVisuals({ runId, ready }: Props) {
   const results = useArtifact<ModelingResults>(runId, "modeling_results.json", ready);
   const shapBlob = useArtifact<ShapEntry[]>(runId, "shap_per_ppg.json", ready);
+  const posterior = useArtifact<PosteriorBlob>(runId, "hierarchical_posterior.json", ready);
   const rows = useMemo<CandidatesRow[]>(() => {
     if (!results || "missing_columns" in results) return [];
     return results.per_ppg.filter((r) => r.attempts && r.attempts.length > 0);
@@ -280,11 +282,12 @@ function ModelingVisuals({ runId, ready }: Props) {
       setSelected(rows[0].ppg_id);
     }
   }, [rows, selected]);
-  if (!results && !shapBlob) return null;
+  if (!results && !shapBlob && !posterior) return null;
   const shapMap = new Map<string, ShapEntry>(
     Array.isArray(shapBlob) ? shapBlob.map((s) => [s.ppg_id, s]) : [],
   );
   const selectedShap = selected ? shapMap.get(selected) : undefined;
+  const hasPosterior = posterior && !("missing_columns" in posterior) && posterior.n_studies > 0;
   return (
     <div className="mt-4 space-y-5 border-t border-slate-800 pt-4">
       <Section title={`Candidate fits per PPG (winners marked) · ${rows.length} PPGs`}>
@@ -294,6 +297,18 @@ function ModelingVisuals({ runId, ready }: Props) {
           <p className="text-[11px] text-slate-500">No fits to display.</p>
         )}
       </Section>
+      {hasPosterior && (
+        <Section
+          title={`Forest plot · empirical-Bayes shrinkage across ${posterior.n_studies} OLS winners (τ² = ${posterior.tau_squared.toFixed(3)})`}
+        >
+          <p className="mb-2 text-[10.5px] text-slate-500">
+            Grey whiskers = per-PPG OLS point ± 95% CI. Green diamonds = posterior
+            after partial-pooling toward the population mean (yellow dashed). PPGs
+            with wider SE get pulled harder toward μ̂.
+          </p>
+          <ElasticityForest data={posterior} />
+        </Section>
+      )}
       {selectedShap && (
         <Section
           title={`Feature attribution · ${selectedShap.ppg_id} · ${selectedShap.shap.method === "tree_shap" ? "tree SHAP" : "centred OLS contribution"}`}

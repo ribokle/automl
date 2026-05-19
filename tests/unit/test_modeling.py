@@ -221,3 +221,16 @@ def test_modeling_agent_writes_per_ppg_artifacts(
         # Mean |SHAP| must be sorted descending so the UI bar chart is stable.
         values = [r["value"] for r in entry["shap"]["mean_abs_shap"]]
         assert values == sorted(values, reverse=True)
+
+    posterior = json.loads((run_dir / "hierarchical_posterior.json").read_text())
+    ols_winner_ids = {
+        row["ppg_id"] for row in compact if row["model"] in {"loglog_ols", "semilog_ols"}
+    }
+    assert {p["ppg_id"] for p in posterior["per_ppg"]} == ols_winner_ids
+    assert posterior["n_studies"] == len(ols_winner_ids)
+    assert posterior["tau_squared"] >= 0
+    for entry in posterior["per_ppg"]:
+        # Shrunk mean must lie between the point estimate and the population mean.
+        lo, hi = sorted([entry["point"], posterior["population_mean"]])
+        assert lo - 1e-9 <= entry["shrunk_mean"] <= hi + 1e-9
+        assert entry["ci_low"] <= entry["shrunk_mean"] <= entry["ci_high"]

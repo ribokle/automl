@@ -142,6 +142,9 @@ export function summariseOutputs(
           : "",
         typeof o.n_retries === "number" ? `${o.n_retries} semi-log retries` : "",
         typeof o.n_shap === "number" ? `${o.n_shap} SHAP summaries` : "",
+        typeof o.n_shrunk === "number" && o.n_shrunk > 0
+          ? `${o.n_shrunk} PPGs pooled · τ²=${Number(o.tau_squared ?? 0).toFixed(2)}`
+          : "",
       ].filter(Boolean);
     default:
       return Object.entries(o)
