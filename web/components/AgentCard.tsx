@@ -12,6 +12,8 @@ import {
 } from "@/lib/agent-meta";
 import { approveAgent, artifactUrl, rejectAgent } from "@/lib/api";
 import type { AgentName, AgentState, AgentStatus, RunEvent } from "@/lib/types";
+import { STAGE_FAQS } from "@/lib/agent-faqs";
+import { AgentFAQ } from "./AgentFAQ";
 import { AgentThinking } from "./AgentThinking";
 import { AgentVisuals } from "./AgentVisuals";
 
@@ -51,8 +53,9 @@ export function AgentCard({ runId, agent, index, status, events, agentState, isL
   const ready = status === "done" || status === "awaiting_approval";
   const hasVisuals = VISUALS_AGENTS.has(agent) && ready;
   const hasThinking = LLM_AGENTS.has(agent) && ready;
+  const hasFaq = (STAGE_FAQS[agent]?.questions.length ?? 0) > 0;
   const showDisclosure = Boolean(
-    reasoning || toolCalls.length > 0 || errorText || hasVisuals || hasThinking || (agentState?.artifacts?.length ?? 0) > 0,
+    reasoning || toolCalls.length > 0 || errorText || hasVisuals || hasThinking || (agentState?.artifacts?.length ?? 0) > 0 || hasFaq,
   );
 
   async function handleApprove() {
@@ -172,6 +175,7 @@ export function AgentCard({ runId, agent, index, status, events, agentState, isL
             {hasVisuals && (
               <AgentVisuals runId={runId} agent={agent} ready={open} events={events} agentState={agentState} />
             )}
+            <AgentFAQ agent={agent} />
           </div>
         )}
 
