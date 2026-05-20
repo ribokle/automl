@@ -17,3 +17,4 @@ class RunSummary(BaseModel):
     data_path: str
     run_dir: str
     created_at: str
+    archived: bool = False

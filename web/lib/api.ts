@@ -59,10 +59,46 @@ export async function getHealth(signal?: AbortSignal): Promise<{ status: string 
   return res.json();
 }
 
-export async function listRuns(): Promise<RunSummary[]> {
-  const res = await fetch(`${API_BASE}/runs`, { cache: "no-store", headers: authHeaders() });
+export async function listRuns(archived = false): Promise<RunSummary[]> {
+  const url = `${API_BASE}/runs?archived=${archived ? "true" : "false"}`;
+  const res = await fetch(url, { cache: "no-store", headers: authHeaders() });
   if (!res.ok) throw new Error(`listRuns failed: ${res.status}`);
   return res.json();
+}
+
+export async function archiveRun(id: string): Promise<RunSummary> {
+  const res = await fetch(`${API_BASE}/runs/${id}/archive`, {
+    method: "POST",
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error(`archive failed: ${res.status}`);
+  return res.json();
+}
+
+export async function unarchiveRun(id: string): Promise<RunSummary> {
+  const res = await fetch(`${API_BASE}/runs/${id}/unarchive`, {
+    method: "POST",
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error(`unarchive failed: ${res.status}`);
+  return res.json();
+}
+
+export async function deleteRun(id: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/runs/${id}`, {
+    method: "DELETE",
+    headers: authHeaders(),
+  });
+  if (!res.ok) {
+    let detail = `${res.status}`;
+    try {
+      const body = (await res.json()) as { detail?: string };
+      if (body.detail) detail = body.detail;
+    } catch {
+      // not JSON
+    }
+    throw new Error(`delete failed: ${detail}`);
+  }
 }
 
 export async function getRun(id: string): Promise<RunStateFull> {

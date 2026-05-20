@@ -83,6 +83,7 @@ export interface RunSummary {
   data_path: string;
   run_dir: string;
   created_at: string;
+  archived?: boolean;
 }
 
 export interface PPGRow {
