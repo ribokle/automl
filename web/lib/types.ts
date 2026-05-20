@@ -74,6 +74,7 @@ export interface RunStateFull {
   created_at: string;
   agents: Record<AgentName, AgentState>;
   gates: Record<string, boolean>;
+  options?: Record<string, unknown>;
 }
 
 export interface RunSummary {
@@ -82,6 +83,7 @@ export interface RunSummary {
   data_path: string;
   run_dir: string;
   created_at: string;
+  archived?: boolean;
 }
 
 export interface PPGRow {

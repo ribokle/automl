@@ -19,8 +19,10 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
+import duckdb
 import numpy as np
 import pandas as pd
 from sklearn.cluster import KMeans
@@ -158,3 +160,40 @@ def label_match_accuracy(predicted: pd.Series, truth: pd.Series) -> dict[str, fl
     matched = int(cm[row_ind, col_ind].sum())
     total = int(cm.sum())
     return {"accuracy": matched / total if total else 0.0, "matched_pairs": matched, "n_total": total}
+
+
+def apply_mapping_to_panel(
+    duckdb_path: Path,
+    assignments: pd.DataFrame,
+    table: str = "main.panel",
+) -> int:
+    """Rewrite ``main.panel.ppg_id`` from the per-SKU assignments.
+
+    The clusterer invents fresh ``PPG_AUTO_*`` ids that don't match the
+    panel's original ``ppg_id`` column (whatever it was loaded with —
+    truth labels on the synthetic data, often empty or sku-derived on
+    real data). Every downstream agent groups by ``main.panel.ppg_id``
+    via ``ppg_week_aggregate``, so unless we propagate the mapping the
+    modelling / decomposition / simulation stages silently see zero
+    rows per PPG.
+
+    Returns the number of panel rows whose ``ppg_id`` was set. Unmatched
+    SKUs (none under normal flow) keep their original value.
+    """
+    if "sku" not in assignments.columns or "ppg_id" not in assignments.columns:
+        raise ValueError("assignments must have sku + ppg_id columns")
+
+    con = duckdb.connect(str(duckdb_path))
+    try:
+        con.register("assignments_df", assignments[["sku", "ppg_id"]])
+        con.execute(
+            f"""
+            UPDATE {table} AS p
+            SET ppg_id = a.ppg_id
+            FROM assignments_df AS a
+            WHERE p.sku = a.sku
+            """
+        )
+        return int(con.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])
+    finally:
+        con.close()

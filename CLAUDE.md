@@ -104,6 +104,19 @@ cd web && pnpm install && pnpm dev    # or pnpm build
   Model routing is per-agent in `core/llm/routing.py`.
 - Parse LLM output with `json.loads` inside `try/except` and fall back on
   the deterministic dry-run when the model returns non-JSON.
+- `AnthropicClient` supports four providers, picked automatically by env:
+  `dry_run` (default when no creds), `api` (`ANTHROPIC_API_KEY`),
+  `oauth` (`ANTHROPIC_AUTH_TOKEN` from `claude setup-token` etc.), and
+  `cli` (shells out to the local `claude` binary). `cli` is never picked
+  implicitly — you must set `LLM_PROVIDER=cli`. Integration tests use the
+  `live_llm` marker and only hit the network when `RUN_LIVE_LLM=true`.
+- Runtime config (model names, API auth, paths, validation thresholds) lives
+  in `core/config.py` as a pydantic-settings `Settings` class accessed via the
+  cached `get_settings()`. Model names default to `claude-opus-4-7` /
+  `claude-sonnet-4-6` and can be overridden globally
+  (`ANTHROPIC_MODEL_OPUS=...`) or per-agent (`MODEL_<AGENT>=...`, e.g.
+  `MODEL_PPG_MAPPING=claude-sonnet-4-6`). Don't reintroduce ad-hoc
+  `os.environ.get` calls in new code — add the field to `Settings` instead.
 
 ### Orchestration
 
@@ -112,6 +125,35 @@ cd web && pnpm install && pnpm dev    # or pnpm build
   runner pauses after the gated agent and waits on a `GateRegistry` event
   released by `POST /runs/{id}/approve` or `/reject`.
 - Disable gates per-run with `gates_enabled=False` (`--no-gates` on the CLI).
+- Gates in `RERUNNABLE_AGENTS` (currently `optimization`) also support
+  `POST /runs/{id}/rerun` with a JSON body. The runner consumes the
+  payload into `run.options[agent]`, re-executes the agent, then
+  re-arms the gate. This backs the constraint editor: solve with
+  defaults, edit ladder / margin floor / comp gap, re-solve, then
+  approve. Don't add new agents to `RERUNNABLE_AGENTS` without
+  thinking through downstream artefact dependencies — most stages
+  feed every subsequent stage and can't be re-run in isolation.
+- The in-memory `_RUNS` registry and `GateRegistry` are per-process. On
+  FastAPI startup, `api.routes.runs.rehydrate_runs` rescans `runs/*/state.json`
+  and rehydrates completed/failed runs into the registry. Anything still
+  marked `running` or `awaiting_approval` from a prior process is downgraded
+  to `failed` with `error="process_restarted"` — the orchestrator task is
+  dead with the previous process, so resumable mid-run state would need a
+  job queue, which we don't have.
+
+### API surface
+
+- CORS origins are read from `ALLOWED_ORIGINS` (comma-separated, default
+  `http://localhost:3000`). Methods are scoped to GET/POST/OPTIONS, headers
+  to `Content-Type` + `Authorization`. Don't reintroduce `allow_origins=["*"]`.
+- Auth is opt-in: set `API_AUTH_TOKEN` to require `Authorization: Bearer
+  <token>` on every route except `/health`. Unset means open (dev default).
+  The check lives at `api/auth.py:require_auth` and is applied router-wide
+  via `dependencies=[Depends(require_auth)]`.
+- Uploads (`api/routes/uploads.py`) only accept `.csv` extensions, sanitize
+  the filename to a basename, stream to disk in 1 MiB chunks, and reject
+  files over `MAX_UPLOAD_MB` (default 200). Don't loosen these without a
+  reason — this endpoint is reachable unauthenticated when auth is off.
 
 ### Data
 
@@ -129,11 +171,14 @@ cd web && pnpm install && pnpm dev    # or pnpm build
 - Server components by default; mark `"use client"` only on the file that
   actually needs hooks/state.
 - API access goes through `web/lib/api.ts`. Browser-side fetches use
-  same-origin `/api/*` URLs and rely on the rewrite in
-  `web/next.config.mjs` to proxy to the API server (`API_PROXY_TARGET`
-  or `NEXT_PUBLIC_API_BASE`, default `http://localhost:8000`). The
-  server-side caller (`listRuns` in `app/runs/page.tsx`) uses the
-  absolute URL from `process.env`. Don't introduce new direct
+  same-origin `/api/*` URLs and are forwarded by the Node route handler
+  at `web/app/api/[...path]/route.ts`, which proxies to the API server
+  (`API_PROXY_TARGET` or `NEXT_PUBLIC_API_BASE`, default
+  `http://localhost:8000`) and injects `Authorization: Bearer
+  $API_AUTH_TOKEN` from server-side env when configured. SSR callers
+  (`listRuns` in `app/runs/page.tsx`) hit the upstream directly and read
+  `API_AUTH_TOKEN` themselves — never via `NEXT_PUBLIC_*`, which would
+  bake the secret into the client bundle. Don't introduce new direct
   `http://localhost:...` fetches in client code — the bundle moves
   between machines, the env doesn't.
 - Per-agent UI gets re-fetched when its `agent_finished` event arrives -

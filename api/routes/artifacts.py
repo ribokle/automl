@@ -5,12 +5,13 @@ verifying the resolved path stays inside the run directory.
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 
+from api.auth import require_auth
 from api.deps import get_run_dir
 
-router = APIRouter(prefix="/artifacts", tags=["artifacts"])
+router = APIRouter(prefix="/artifacts", tags=["artifacts"], dependencies=[Depends(require_auth)])
 
 
 @router.get("/{run_id}/{path:path}")

@@ -6,6 +6,7 @@ requires-python = ">=3.11"
 dependencies = [
     "anthropic>=0.40.0",
     "pydantic>=2.7",
+    "pydantic-settings>=2.4",
     "fastapi>=0.115",
     "uvicorn[standard]>=0.30",
     "sse-starlette>=2.1",
@@ -25,6 +26,11 @@ dependencies = [
     "python-multipart>=0.0.9",
     "scikit-learn>=1.5",
     "scipy>=1.13",
+    "statsmodels>=0.14",
+    "lightgbm>=4.3",
+    "pulp>=2.8",
+    "jinja2>=3.1.6",
+    "weasyprint>=68.1",
 ]
 
 [project.optional-dependencies]
@@ -61,3 +67,6 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = [
+    "live_llm: integration test that hits a real LLM provider; opt in with RUN_LIVE_LLM=true",
+]

@@ -7,6 +7,7 @@ from pydantic import BaseModel
 class CreateRunRequest(BaseModel):
     data_path: str
     gates_enabled: bool = False
+    agent_mode: bool = True
     label: str | None = None
 
 
@@ -16,3 +17,4 @@ class RunSummary(BaseModel):
     data_path: str
     run_dir: str
     created_at: str
+    archived: bool = False

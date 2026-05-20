@@ -26,7 +26,10 @@ def _load_panel(duckdb_path: Path, table: str) -> pd.DataFrame:
         con.close()
 
 
-def _run_with_great_expectations(df: pd.DataFrame) -> list[CheckResult]:
+def _run_with_great_expectations(
+    df: pd.DataFrame,
+    baseline_path: Path | None = None,
+) -> list[CheckResult]:
     try:
         import great_expectations as gx
         from great_expectations.core.expectation_suite import ExpectationSuite
@@ -48,7 +51,7 @@ def _run_with_great_expectations(df: pd.DataFrame) -> list[CheckResult]:
     batch = batch_def.get_batch(batch_parameters={"dataframe": df})
 
     results: list[CheckResult] = []
-    for suite_name, expectations in all_expectations().items():
+    for suite_name, expectations in all_expectations(baseline_path=baseline_path).items():
         suite = ExpectationSuite(name=suite_name)
         for exp in expectations:
             suite.add_expectation(exp)
@@ -68,13 +71,41 @@ def _run_with_great_expectations(df: pd.DataFrame) -> list[CheckResult]:
     return results
 
 
-def run_ge_checks(duckdb_path: Path, table: str = "panel") -> list[CheckResult]:
+def run_ge_checks(
+    duckdb_path: Path,
+    table: str = "panel",
+    baseline_path: Path | None = None,
+) -> list[CheckResult]:
     df = _load_panel(duckdb_path, table)
-    return _run_with_great_expectations(df)
+    return _run_with_great_expectations(df, baseline_path=baseline_path)
 
 
 def capture_baseline(duckdb_path: Path, out_json: Path, table: str = "panel") -> dict[str, Any]:
-    """Write a minimal baseline distribution snapshot for future drift checks."""
+    """Write a baseline distribution snapshot for future drift checks.
+
+    Output JSON shape::
+
+        {
+          "row_count": <int>,
+          "columns": {
+            "<col>": {
+              "mean": <float>,
+              "std":  <float>,
+              "q25":  <float>,
+              "q50":  <float>,
+              "q75":  <float>,
+              "q95":  <float>
+            },
+            ...
+          }
+        }
+
+    Captured for columns: ``price``, ``units``, ``distribution_acv``.
+    On subsequent ingestions ``run_ge_checks(baseline_path=...)`` reads this
+    file to build the ``panel_drift_suite`` expectations (±40% of each stat).
+    First-run behaviour: if no baseline exists, the drift suite returns an
+    empty list and is silently skipped.
+    """
     import json
 
     df = _load_panel(duckdb_path, table)

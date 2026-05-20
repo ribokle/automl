@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { getArtifact } from "@/lib/api";
 import { CorrHeatmap, type CorrData } from "./charts/CorrHeatmap";
 import { CoverageHeatmap, type CoverageData } from "./charts/CoverageHeatmap";
@@ -14,10 +14,19 @@ import {
 import { PPGPriceBox, type PriceBoxData } from "./charts/PPGPriceBox";
 import { EligibilityBars, type EligibilityData } from "./charts/EligibilityBars";
 import { VIFBar } from "./charts/VIFBar";
+import { SHAPBar, type SHAPSummary } from "./charts/SHAPBar";
+import { ElasticityForest, type PosteriorBlob } from "./charts/ElasticityForest";
+import { ConstraintBinding, type ConstraintBindingRow } from "./charts/ConstraintBinding";
+import { DecompStackedArea, type DecompPPGBlob } from "./charts/DecompStackedArea";
+import { FittedVsActual, type FittedVsActualRow } from "./charts/FittedVsActual";
+import { ResidualHistogram, type ResidualRow } from "./charts/ResidualHistogram";
+import { SimulationHeatmap, type SimulationGridBlob } from "./charts/SimulationHeatmap";
 import { PPGTabs } from "./PPGTabs";
 import { PPGTable } from "./PPGTable";
+import { CandidatesTable, type CandidatesRow } from "./tables/CandidatesTable";
 import { DataPreview, type ProfileBlob } from "./tables/DataPreview";
 import { DropLog, KeptList, type DropLogData } from "./tables/DropLog";
+import { RecommendationTable, type RecommendationRow } from "./tables/RecommendationTable";
 import { SchemaTable } from "./tables/SchemaTable";
 import { QualityPanel, type QualityData } from "./tables/QualityPanel";
 import { AnomalyTable, type FindingsBlob } from "./tables/AnomalyTable";
@@ -25,13 +34,17 @@ import {
   TargetRelationship,
   type TargetRelationshipRow,
 } from "./tables/TargetRelationship";
-import type { AgentName, RunEvent } from "@/lib/types";
+import { ValidationTable, type ValidationRow } from "./tables/ValidationTable";
+import { InsightsSummary, type InsightsSummaryBlob } from "./tables/InsightsSummary";
+import { ConstraintEditor, type ConstraintsBlob } from "./ConstraintEditor";
+import type { AgentName, AgentState, RunEvent } from "@/lib/types";
 
 interface Props {
   runId: string;
   agent: AgentName;
   ready: boolean;
   events: RunEvent[];
+  agentState?: AgentState;
 }
 
 type Loaded<T> = T | null | { missing_columns: string[] };
@@ -76,6 +89,18 @@ export function AgentVisuals(props: Props) {
       return <FeatureEngineeringVisuals {...props} />;
     case "feature_refine":
       return <FeatureRefineVisuals {...props} />;
+    case "modeling":
+      return <ModelingVisuals {...props} />;
+    case "decomposition":
+      return <DecompositionVisuals {...props} />;
+    case "simulation":
+      return <SimulationVisuals {...props} />;
+    case "optimization":
+      return <OptimizationVisuals {...props} />;
+    case "validation":
+      return <ValidationVisuals {...props} />;
+    case "insights":
+      return <InsightsVisuals {...props} />;
     default:
       return null;
   }
@@ -244,6 +269,304 @@ interface RefineReport {
   max_abs_corr: number;
   vif_threshold: number;
   passes_thresholds: boolean;
+}
+
+interface ModelingResults {
+  controls_used: string[];
+  per_ppg: (CandidatesRow & {
+    winner: { diagnostics: { shap?: SHAPSummary } } | null;
+  })[];
+  n_correct_sign: number;
+  n_retries: number;
+  n_total: number;
+  model_pool: string[];
+}
+
+interface ShapEntry {
+  ppg_id: string;
+  model: string;
+  shap: SHAPSummary;
+}
+
+function ModelingVisuals({ runId, ready }: Props) {
+  const results = useArtifact<ModelingResults>(runId, "modeling_results.json", ready);
+  const shapBlob = useArtifact<ShapEntry[]>(runId, "shap_per_ppg.json", ready);
+  const posterior = useArtifact<PosteriorBlob>(runId, "hierarchical_posterior.json", ready);
+  const fvaBlob = useArtifact<FittedVsActualRow[]>(runId, "fitted_vs_actual.json", ready);
+  const rows = useMemo<CandidatesRow[]>(() => {
+    if (!results || "missing_columns" in results) return [];
+    return results.per_ppg.filter((r) => r.attempts && r.attempts.length > 0);
+  }, [results]);
+  const [selected, setSelected] = useState<string | null>(null);
+  useEffect(() => {
+    if (rows.length && (!selected || !rows.some((r) => r.ppg_id === selected))) {
+      setSelected(rows[0].ppg_id);
+    }
+  }, [rows, selected]);
+  if (!results && !shapBlob && !posterior) return null;
+  const shapMap = new Map<string, ShapEntry>(
+    Array.isArray(shapBlob) ? shapBlob.map((s) => [s.ppg_id, s]) : [],
+  );
+  const fvaMap = new Map<string, FittedVsActualRow>(
+    Array.isArray(fvaBlob) ? fvaBlob.map((r) => [r.ppg_id, r]) : [],
+  );
+  const selectedShap = selected ? shapMap.get(selected) : undefined;
+  const selectedFva = selected ? fvaMap.get(selected) : undefined;
+  const hasPosterior = posterior && !("missing_columns" in posterior) && posterior.n_studies > 0;
+  return (
+    <div className="mt-4 space-y-5 border-t border-slate-800 pt-4">
+      <Section title={`Candidate fits per PPG (winners marked) · ${rows.length} PPGs`}>
+        {rows.length > 0 ? (
+          <CandidatesTable rows={rows} selectedPpg={selected} onSelectPpg={setSelected} />
+        ) : (
+          <p className="text-[11px] text-slate-500">No fits to display.</p>
+        )}
+      </Section>
+      {hasPosterior && (
+        <Section
+          title={`Forest plot · empirical-Bayes shrinkage across ${posterior.n_studies} OLS winners (τ² = ${posterior.tau_squared.toFixed(3)})`}
+        >
+          <p className="mb-2 text-[10.5px] text-slate-500">
+            Grey whiskers = per-PPG OLS point ± 95% CI. Green diamonds = posterior
+            after partial-pooling toward the population mean (yellow dashed). PPGs
+            with wider SE get pulled harder toward μ̂.
+          </p>
+          <ElasticityForest data={posterior} />
+        </Section>
+      )}
+      {selectedFva && (
+        <Section
+          title={`Fitted vs actual · ${selectedFva.ppg_id} · ${selectedFva.model}`}
+        >
+          <p className="mb-2 text-[10.5px] text-slate-500">
+            Train (green) and test (yellow) cells against the y = x identity. A
+            tight cluster around the diagonal is what you want; bowing away
+            shows where the model under- or over-shoots.
+          </p>
+          <FittedVsActual data={selectedFva} />
+        </Section>
+      )}
+      {selectedShap && (
+        <Section
+          title={`Feature attribution · ${selectedShap.ppg_id} · ${selectedShap.shap.method === "tree_shap" ? "tree SHAP" : "centred OLS contribution"}`}
+        >
+          <p className="mb-2 text-[10.5px] text-slate-500">
+            Bars show mean |SHAP| for the winner ({selectedShap.model}). Blue =
+            feature pushes log-units down on average; green = pushes up.
+          </p>
+          <SHAPBar data={selectedShap.shap} />
+        </Section>
+      )}
+    </div>
+  );
+}
+
+function DecompositionVisuals({ runId, ready }: Props) {
+  const blob = useArtifact<DecompPPGBlob[]>(runId, "decomposition_per_ppg_week.json", ready);
+  const list = useMemo(() => (Array.isArray(blob) ? blob : []), [blob]);
+  const [selected, setSelected] = useState<string | null>(null);
+  useEffect(() => {
+    if (list.length && (!selected || !list.some((r) => r.ppg_id === selected))) {
+      setSelected(list[0].ppg_id);
+    }
+  }, [list, selected]);
+  if (!list.length) return null;
+  const current = list.find((r) => r.ppg_id === selected) ?? list[0];
+  return (
+    <div className="mt-4 space-y-3 border-t border-slate-800 pt-4">
+      <Section title="Due-to decomposition over time">
+        <div className="mb-2 flex flex-wrap items-center gap-1">
+          {list.map((r) => (
+            <button
+              key={r.ppg_id}
+              type="button"
+              onClick={() => setSelected(r.ppg_id)}
+              className={`rounded border px-2 py-0.5 font-mono text-[10px] ${
+                r.ppg_id === current.ppg_id
+                  ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-200"
+                  : "border-slate-700 bg-slate-900/60 text-slate-300 hover:bg-slate-800"
+              }`}
+            >
+              {r.ppg_id}
+            </button>
+          ))}
+        </div>
+        <p className="mb-2 text-[10.5px] text-slate-500">
+          Stacked areas = ``base`` + each driver group's contribution to weekly
+          units; the thin white line is the observed weekly volume. Where the
+          stack and the line diverge is the residual the model couldn't explain.
+        </p>
+        <DecompStackedArea data={current} />
+      </Section>
+    </div>
+  );
+}
+
+function SimulationVisuals({ runId, ready }: Props) {
+  const blob = useArtifact<SimulationGridBlob[]>(runId, "simulation_grid.json", ready);
+  const list = useMemo(() => (Array.isArray(blob) ? blob : []), [blob]);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [metric, setMetric] = useState<"revenue" | "margin" | "units">("revenue");
+  useEffect(() => {
+    if (list.length && (!selected || !list.some((r) => r.ppg_id === selected))) {
+      setSelected(list[0].ppg_id);
+    }
+  }, [list, selected]);
+  if (!list.length) return null;
+  const current = list.find((r) => r.ppg_id === selected) ?? list[0];
+  return (
+    <div className="mt-4 space-y-3 border-t border-slate-800 pt-4">
+      <Section title={`Price × promo grid · ${current.ppg_id} · ${current.model_kind}`}>
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-1">
+          <div className="flex flex-wrap items-center gap-1">
+            {list.map((r) => (
+              <button
+                key={r.ppg_id}
+                type="button"
+                onClick={() => setSelected(r.ppg_id)}
+                className={`rounded border px-2 py-0.5 font-mono text-[10px] ${
+                  r.ppg_id === current.ppg_id
+                    ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-200"
+                    : "border-slate-700 bg-slate-900/60 text-slate-300 hover:bg-slate-800"
+                }`}
+              >
+                {r.ppg_id}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-1">
+            {(["revenue", "margin", "units"] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setMetric(m)}
+                className={`rounded border px-2 py-0.5 text-[10px] uppercase tracking-wider ${
+                  metric === m
+                    ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-200"
+                    : "border-slate-700 bg-slate-900/60 text-slate-300 hover:bg-slate-800"
+                }`}
+              >
+                {m}
+              </button>
+            ))}
+          </div>
+        </div>
+        <SimulationHeatmap data={current} metric={metric} />
+      </Section>
+    </div>
+  );
+}
+
+interface OptResultsRow {
+  ppg_id: string;
+  milp: {
+    feasible_strict?: boolean;
+    relaxed?: boolean;
+    chosen_slacks?: Record<string, number>;
+  };
+}
+
+function OptimizationVisuals({ runId, ready }: Props) {
+  const rows = useArtifact<RecommendationRow[]>(runId, "optimization_table.json", ready);
+  const constraints = useArtifact<ConstraintsBlob>(runId, "optimization_constraints.json", ready);
+  const results = useArtifact<OptResultsRow[]>(runId, "optimization_results.json", ready);
+  if (!rows && !constraints) return null;
+  const recos = Array.isArray(rows) ? rows : [];
+  const c = constraints && !("missing_columns" in constraints) ? constraints : null;
+  const bindingRows: ConstraintBindingRow[] = Array.isArray(results)
+    ? results
+        .filter((r) => r.milp?.chosen_slacks && Object.keys(r.milp.chosen_slacks).length > 0)
+        .map((r) => ({
+          ppg_id: r.ppg_id,
+          slacks: r.milp.chosen_slacks ?? {},
+          feasible_strict: Boolean(r.milp.feasible_strict),
+          relaxed: Boolean(r.milp.relaxed),
+        }))
+    : [];
+  return (
+    <div className="mt-4 space-y-5 border-t border-slate-800 pt-4">
+      <Section title={`Recommendations · ${recos.length} PPGs · objective=${c?.objective ?? "—"}`}>
+        <RecommendationTable rows={recos} />
+      </Section>
+      {bindingRows.length > 0 && (
+        <Section title="Constraint slack at the chosen cell">
+          <p className="mb-2 text-[10.5px] text-slate-500">
+            Positive bars = slack (the constraint isn't binding); near-zero =
+            the optimiser stopped at that boundary; negative = the constraint
+            was relaxed and the violation magnitude is reported.
+          </p>
+          <ConstraintBinding rows={bindingRows} />
+        </Section>
+      )}
+      {c && (
+        <Section title="Constraint editor · solve with defaults, edit, re-solve, approve">
+          <ConstraintEditor runId={runId} current={c} />
+        </Section>
+      )}
+    </div>
+  );
+}
+
+function InsightsVisuals({ runId, ready, agentState }: Props) {
+  const summary = useArtifact<InsightsSummaryBlob>(runId, "insights_summary.json", ready);
+  if (!summary || "missing_columns" in summary) return null;
+  const hasPdf = Boolean(agentState?.artifacts?.some((a) => a.name === "report.pdf"));
+  return (
+    <div className="mt-4 border-t border-slate-800 pt-4">
+      <Section title="Executive summary">
+        <InsightsSummary runId={runId} data={summary} hasPdf={hasPdf} />
+      </Section>
+    </div>
+  );
+}
+
+function ValidationVisuals({ runId, ready }: Props) {
+  const rows = useArtifact<ValidationRow[]>(runId, "validation_table.json", ready);
+  const residuals = useArtifact<ResidualRow[]>(runId, "validation_residuals.json", ready);
+  const list = Array.isArray(rows) ? rows : [];
+  const residualList = Array.isArray(residuals) ? residuals : [];
+  const [selected, setSelected] = useState<string | null>(null);
+  useEffect(() => {
+    if (residualList.length && (!selected || !residualList.some((r) => r.ppg_id === selected))) {
+      setSelected(residualList[0].ppg_id);
+    }
+  }, [residualList, selected]);
+  if (!rows && !residuals) return null;
+  const current = residualList.find((r) => r.ppg_id === selected) ?? residualList[0];
+  return (
+    <div className="mt-4 space-y-5 border-t border-slate-800 pt-4">
+      <Section title={`Rolling-origin CV verdicts · ${list.length} PPGs`}>
+        <ValidationTable rows={list} />
+      </Section>
+      {current && (
+        <Section title={`Hold-out residuals · ${current.ppg_id}`}>
+          <div className="mb-2 flex flex-wrap items-center gap-1">
+            {residualList.map((r) => (
+              <button
+                key={r.ppg_id}
+                type="button"
+                onClick={() => setSelected(r.ppg_id)}
+                className={`rounded border px-2 py-0.5 font-mono text-[10px] ${
+                  r.ppg_id === current.ppg_id
+                    ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-200"
+                    : "border-slate-700 bg-slate-900/60 text-slate-300 hover:bg-slate-800"
+                }`}
+              >
+                {r.ppg_id}
+              </button>
+            ))}
+          </div>
+          <p className="mb-2 text-[10.5px] text-slate-500">
+            Histogram of ``observed - predicted`` on log-units, pooled across
+            every CV fold's hold-out window. Centred near zero with a tight
+            spread = stable fit; long tails = a few weeks the model badly
+            misjudges.
+          </p>
+          <ResidualHistogram data={current} />
+        </Section>
+      )}
+    </div>
+  );
 }
 
 function FeatureRefineVisuals({ runId, ready }: Props) {

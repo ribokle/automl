@@ -3,34 +3,19 @@
 import { useState } from "react";
 import {
   AGENT_META,
+  LLM_AGENTS,
   STATUS_STYLE,
+  VISUALS_AGENTS,
   formatDuration,
   summariseOutputs,
   summariseTool,
 } from "@/lib/agent-meta";
 import { approveAgent, artifactUrl, rejectAgent } from "@/lib/api";
 import type { AgentName, AgentState, AgentStatus, RunEvent } from "@/lib/types";
+import { STAGE_FAQS } from "@/lib/agent-faqs";
+import { AgentFAQ } from "./AgentFAQ";
 import { AgentThinking } from "./AgentThinking";
 import { AgentVisuals } from "./AgentVisuals";
-
-const VISUALS_AGENTS: ReadonlySet<AgentName> = new Set([
-  "ingestion",
-  "ppg_mapping",
-  "ppg_selection",
-  "eda",
-  "feature_engineering",
-  "feature_refine",
-] as const);
-
-const LLM_AGENTS: ReadonlySet<AgentName> = new Set([
-  "ingestion",
-  "ppg_mapping",
-  "ppg_selection",
-  "feature_selection",
-  "eda",
-  "feature_engineering",
-  "feature_refine",
-] as const);
 
 interface Props {
   runId: string;
@@ -48,17 +33,29 @@ export function AgentCard({ runId, agent, index, status, events, agentState, isL
   const style = STATUS_STYLE[status];
 
   const toolCalls = events.filter((e) => e.type === "tool_called");
+  const lastRerun = [...events].reverse().find((e) => e.type === "agent_rerunning");
+  const lastFinished = [...events].reverse().find((e) => e.type === "agent_finished");
+  const rerunning =
+    lastRerun !== undefined &&
+    (lastFinished === undefined ||
+      Date.parse(lastRerun.ts) > Date.parse(lastFinished.ts));
   const outputs = agentState?.outputs ?? events.find((e) => e.type === "agent_finished")?.outputs ?? null;
   const summary = summariseOutputs(agent, outputs);
-  const duration = formatDuration(agentState?.started_at, agentState?.finished_at);
+  const startedEvt = events.find((e) => e.type === "agent_started")?.ts ?? null;
+  const finishedEvt =
+    events.find((e) => e.type === "agent_finished" || e.type === "agent_failed")?.ts ?? null;
+  const duration =
+    formatDuration(agentState?.started_at, agentState?.finished_at) ??
+    formatDuration(startedEvt, finishedEvt);
   const reasoning = agentState?.reasoning;
   const confidence = agentState?.confidence;
   const errorText = agentState?.error ?? events.find((e) => e.type === "agent_failed")?.error;
   const ready = status === "done" || status === "awaiting_approval";
   const hasVisuals = VISUALS_AGENTS.has(agent) && ready;
   const hasThinking = LLM_AGENTS.has(agent) && ready;
+  const hasFaq = (STAGE_FAQS[agent]?.questions.length ?? 0) > 0;
   const showDisclosure = Boolean(
-    reasoning || toolCalls.length > 0 || errorText || hasVisuals || hasThinking || (agentState?.artifacts?.length ?? 0) > 0,
+    reasoning || toolCalls.length > 0 || errorText || hasVisuals || hasThinking || (agentState?.artifacts?.length ?? 0) > 0 || hasFaq,
   );
 
   async function handleApprove() {
@@ -79,7 +76,19 @@ export function AgentCard({ runId, agent, index, status, events, agentState, isL
         {!isLast && <div className="mt-1 w-px flex-1 bg-slate-800" />}
       </div>
 
-      <div className={`mb-3 rounded-lg border border-slate-800 bg-slate-900/60 transition`}>
+      <div
+        className={`mb-3 rounded-lg border bg-slate-900/60 transition ${
+          status === "running"
+            ? "border-amber-500/30"
+            : status === "awaiting_approval"
+              ? "border-purple-500/30"
+              : status === "failed"
+                ? "border-rose-500/30"
+                : status === "done"
+                  ? "border-slate-800"
+                  : "border-slate-800/60 opacity-70"
+        }`}
+      >
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
@@ -110,6 +119,9 @@ export function AgentCard({ runId, agent, index, status, events, agentState, isL
                 ))}
               </div>
             )}
+            {status === "failed" && errorText && !open && (
+              <p className="mt-2 truncate text-[11px] text-rose-300">{errorText}</p>
+            )}
           </div>
           {showDisclosure && (
             <span className="mt-1 text-xs text-slate-500">{open ? "▾" : "▸"}</span>
@@ -130,7 +142,7 @@ export function AgentCard({ runId, agent, index, status, events, agentState, isL
                 <ul className="space-y-1 font-mono text-[11px] text-slate-300">
                   {toolCalls.map((e, i) => (
                     <li key={i} className="flex justify-between gap-3">
-                      <span>{summariseTool(e.tool ?? "?", e as unknown as Record<string, unknown>)}</span>
+                      <span>{summariseTool(e.tool ?? "?", e)}</span>
                       <span className="text-slate-500">{new Date(e.ts).toLocaleTimeString()}</span>
                     </li>
                   ))}
@@ -160,11 +172,20 @@ export function AgentCard({ runId, agent, index, status, events, agentState, isL
               <div className="rounded bg-rose-950/40 px-2 py-1.5 text-[11px] text-rose-300">{errorText}</div>
             )}
             {hasThinking && <AgentThinking runId={runId} agent={agent} ready={open} />}
-            {hasVisuals && <AgentVisuals runId={runId} agent={agent} ready={open} events={events} />}
+            {hasVisuals && (
+              <AgentVisuals runId={runId} agent={agent} ready={open} events={events} agentState={agentState} />
+            )}
+            <AgentFAQ agent={agent} />
           </div>
         )}
 
-        {status === "awaiting_approval" && (
+        {rerunning && (
+          <div className="border-t border-amber-500/30 bg-amber-500/5 px-4 py-2 text-xs text-amber-200">
+            Re-solving with new constraints…
+          </div>
+        )}
+
+        {status === "awaiting_approval" && !rerunning && (
           <div className="flex items-center justify-between gap-2 border-t border-purple-500/30 bg-purple-500/5 px-4 py-2">
             <span className="text-xs text-purple-200">Approval required to proceed</span>
             <div className="flex gap-2">

@@ -1,5 +1,5 @@
 import { AGENT_ORDER, type AgentName, type AgentState } from "@/lib/types";
-import { formatDuration, STATUS_STYLE } from "@/lib/agent-meta";
+import { formatDisplayName, formatDuration, STATUS_STYLE } from "@/lib/agent-meta";
 
 interface Props {
   runId: string;
@@ -36,9 +36,9 @@ export function RunHeader({ runId, runStatus, agents, startedAt }: Props) {
   const style = STATUS_STYLE[statusKey];
 
   const currentLabel = awaiting
-    ? `awaiting approval · ${awaiting.replace(/_/g, " ")}`
+    ? `awaiting approval · ${formatDisplayName(awaiting)}`
     : running
-      ? `running · ${running.replace(/_/g, " ")}`
+      ? `running · ${formatDisplayName(running)}`
       : runStatus;
 
   return (

@@ -24,7 +24,7 @@ from core.data.charts import (
     ppg_scatter_tier,
 )
 from core.orchestrator.state import AgentResult, ArtifactRef, RunState
-from core.ppg.cluster import ClusterParams, cluster_ppgs
+from core.ppg.cluster import ClusterParams, apply_mapping_to_panel, cluster_ppgs
 from core.ppg.features import aggregate_sku_features
 
 
@@ -73,6 +73,16 @@ class PPGMappingAgent(Agent):
             {"tool": "cluster_ppgs", "n_skus": int(len(assignments)), "n_ppgs": int(assignments["ppg_id"].nunique())},
         )
 
+        # Propagate the SKU→PPG mapping to the canonical panel mart so
+        # downstream agents that group by main.panel.ppg_id (everything from
+        # ppg_selection onward) see the same labels as the mapping output.
+        n_panel_rows = await asyncio.to_thread(apply_mapping_to_panel, duckdb_path, assignments)
+        await self.emit(
+            run,
+            "tool_called",
+            {"tool": "apply_mapping_to_panel", "panel_rows": int(n_panel_rows)},
+        )
+
         # Per-PPG summary for LLM rationale.
         per_ppg_summary: list[dict] = []
         for ppg_id, grp in assignments.groupby("ppg_id"):
@@ -98,7 +108,7 @@ class PPGMappingAgent(Agent):
         )
         rationales: dict
         try:
-            rationales = json.loads(llm_resp.text) if not llm_resp.raw.get("dry_run") else _dry_run_rationales(per_ppg_summary)
+            rationales = json.loads(llm_resp.text) if not self._is_dry_run(llm_resp) else _dry_run_rationales(per_ppg_summary)
         except (json.JSONDecodeError, ValueError):
             rationales = _dry_run_rationales(per_ppg_summary)
         rationale_lookup = {item["ppg_id"]: item for item in rationales.get("per_ppg", [])}

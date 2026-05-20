@@ -22,13 +22,22 @@ def run(
     data: Path = typer.Option(Path("data/synthetic.csv"), help="Input CSV path"),
     out: Path = typer.Option(Path("runs"), help="Base directory for run artifacts"),
     no_gates: bool = typer.Option(True, "--no-gates/--with-gates", help="Disable approval gates (default: disabled)"),
+    agent_mode: bool = typer.Option(
+        True,
+        "--agent-mode/--no-agent-mode",
+        help="Use LLM-backed agents (default) or force deterministic dry-run fallbacks across every stage.",
+    ),
 ) -> None:
     """Execute the full agentic pipeline end-to-end."""
     if not data.exists():
         console.print(f"[red]Data file not found: {data}[/red]")
         raise typer.Exit(code=1)
 
-    state = RunState.new(data_path=str(data.resolve()), run_dir=out / "tmp")
+    state = RunState.new(
+        data_path=str(data.resolve()),
+        run_dir=out / "tmp",
+        options={"agent_mode": agent_mode},
+    )
     run_dir = out / state.id
     run_dir.mkdir(parents=True, exist_ok=True)
     state.run_dir = str(run_dir.resolve())
@@ -37,7 +46,7 @@ def run(
 
     console.print(f"[cyan]Run {state.id} -> {state.run_dir}[/cyan]")
 
-    asyncio.run(execute(state, gates_enabled=not no_gates))
+    asyncio.run(execute(state, gates_enabled=not no_gates, agent_mode=agent_mode))
 
     table = Table(title=f"Run {state.id}: {state.status.value}")
     table.add_column("Agent")

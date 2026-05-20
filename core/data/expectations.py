@@ -5,9 +5,13 @@ keyed by suite name.
 """
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from typing import Any
 
 from great_expectations import expectations as gxe
+
+from core.config import get_settings
 
 
 def _volume() -> list[Any]:
@@ -46,10 +50,73 @@ def _relationship() -> list[Any]:
     ]
 
 
-def all_expectations() -> dict[str, list[Any]]:
-    """Return suite name -> list of Expectation instances."""
+def _drift(baseline_path: Path | None) -> list[Any]:
+    """Build drift expectations from a previously captured baseline snapshot.
+
+    Returns an empty list when baseline_path is None or the file is absent
+    (first-run skip — no baseline exists yet).
+    """
+    if baseline_path is None:
+        return []
+    try:
+        baseline = json.loads(Path(baseline_path).read_text())
+    except (FileNotFoundError, json.JSONDecodeError):
+        return []
+
+    slack_pct = get_settings().drift_slack_pct
+    exps: list[Any] = []
+    for col, stats in baseline.get("columns", {}).items():
+        mean = stats.get("mean")
+        if mean is not None and mean > 0:
+            slack = abs(mean) * slack_pct
+            exps.append(
+                gxe.ExpectColumnMeanToBeBetween(
+                    column=col, min_value=mean - slack, max_value=mean + slack
+                )
+            )
+        q25 = stats.get("q25")
+        q75 = stats.get("q75")
+        if q25 is not None and q75 is not None:
+            slack25 = max(abs(q25) * slack_pct, 0.01)
+            slack75 = max(abs(q75) * slack_pct, 0.01)
+            exps.append(
+                gxe.ExpectColumnQuantileValuesToBeBetween(
+                    column=col,
+                    quantile_ranges={
+                        "quantiles": [0.25, 0.75],
+                        "value_ranges": [
+                            [q25 - slack25, q25 + slack25],
+                            [q75 - slack75, q75 + slack75],
+                        ],
+                    },
+                )
+            )
+    return exps
+
+
+def _anomaly() -> list[Any]:
+    return [
+        # units must be non-negative (duplicate safety net alongside dbt test)
+        gxe.ExpectColumnValuesToBeBetween(column="units", min_value=0),
+        # price must stay positive
+        gxe.ExpectColumnValuesToBeBetween(column="price", min_value=0.01),
+        # distribution_acv bounded — catch sudden 0/100 spikes
+        gxe.ExpectColumnValuesToBeBetween(
+            column="distribution_acv", min_value=0, max_value=100, mostly=0.99
+        ),
+    ]
+
+
+def all_expectations(baseline_path: Path | None = None) -> dict[str, list[Any]]:
+    """Return suite name -> list of Expectation instances.
+
+    ``baseline_path`` is the JSON file written by ``capture_baseline()``.
+    When absent, the drift suite is empty (first-run skip).
+    """
     return {
         "panel_volume_suite": _volume(),
         "panel_distribution_suite": _distribution(),
         "panel_relationship_suite": _relationship(),
+        "panel_drift_suite": _drift(baseline_path),
+        "panel_anomaly_suite": _anomaly(),
     }

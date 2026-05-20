@@ -1,7 +1,7 @@
 export interface ProfileBlob {
   profile: {
     row_count: number;
-    columns: { name: string; type: string; null_pct: number }[];
+    columns: { name: string; dtype: string; null_pct: number }[];
   };
   sample: Record<string, unknown>[];
   outliers: { column: string; n_outliers: number; outlier_pct: number }[];
