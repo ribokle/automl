@@ -84,5 +84,72 @@ def seed() -> None:
     console.print("[green]Wrote data/synthetic.csv and synthetic/truth.json[/green]")
 
 
+@app.command("prepare-dominicks")
+def prepare_dominicks(
+    raw_dir: Path = typer.Option(
+        Path("data/dominicks-raw"),
+        help="Directory containing the Dominick's category CSVs (any nesting).",
+    ),
+    out: Path = typer.Option(Path("data/dominicks.csv"), help="Output panel CSV path."),
+    categories: str = typer.Option(
+        "yogurt,beer",
+        help="Comma-separated Dominick's category labels (e.g. yogurt,beer,soft_drinks). "
+        "Use 'all' for every known category.",
+    ),
+    stores: str = typer.Option(
+        "",
+        help="Optional comma-separated STORE numbers to keep. Empty = all stores.",
+    ),
+    start_week: int = typer.Option(1, help="Earliest Dominick's WEEK to include."),
+    end_week: int = typer.Option(0, help="Latest WEEK to include (0 = no limit)."),
+    base_price_window: int = typer.Option(
+        13, help="Trailing window (weeks) for non-promo base_price max."
+    ),
+) -> None:
+    """Convert a Dominick's archive into the canonical panel CSV.
+
+    The Kilts data-use agreement forbids redistribution of the raw files —
+    download them yourself (https://www.chicagobooth.edu/research/kilts) and
+    drop the per-category CSVs anywhere under ``data/dominicks-raw/``.
+    """
+    from core.data.loaders.dominicks import build_dominicks_panel
+    from core.data.schema import REQUIRED_COLUMNS
+
+    cat_list = (
+        None
+        if categories.strip().lower() in {"all", ""}
+        else [c.strip() for c in categories.split(",") if c.strip()]
+    )
+    store_list = [int(s) for s in stores.split(",") if s.strip()] or None
+
+    panel = build_dominicks_panel(
+        raw_dir=raw_dir,
+        categories=cat_list,
+        stores=store_list,
+        start_week=start_week,
+        end_week=end_week or None,
+        base_price_window=base_price_window,
+    )
+
+    missing = [c for c in REQUIRED_COLUMNS if c not in panel.columns]
+    if missing:
+        console.print(f"[red]Output missing required columns: {missing}[/red]")
+        raise typer.Exit(code=1)
+
+    out.parent.mkdir(parents=True, exist_ok=True)
+    panel.to_csv(out, index=False)
+
+    n_skus = panel["sku"].nunique()
+    n_stores = panel["store_id"].nunique()
+    n_weeks = panel["week_start"].nunique()
+    cats = ", ".join(sorted(panel["category"].dropna().unique().tolist()))
+    console.print(
+        f"[green]Wrote {len(panel):,} rows -> {out}[/green]\n"
+        f"  SKUs: {n_skus} · Stores: {n_stores} · Weeks: {n_weeks}\n"
+        f"  Categories: {cats}\n"
+        f"  Date range: {panel['week_start'].min()} -> {panel['week_start'].max()}"
+    )
+
+
 if __name__ == "__main__":
     app()
