@@ -14,6 +14,43 @@ export async function createRun(dataPath: string, gatesEnabled = false): Promise
   return res.json();
 }
 
+export interface UploadResult {
+  path: string;
+  bytes: number;
+  filename: string;
+}
+
+export async function uploadCsv(file: File): Promise<UploadResult> {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch(`${API_BASE}/uploads`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: form,
+  });
+  if (!res.ok) {
+    let detail = `${res.status}`;
+    try {
+      const body = (await res.json()) as { detail?: string };
+      if (body.detail) detail = body.detail;
+    } catch {
+      // body wasn't JSON; fall back to status
+    }
+    throw new Error(`upload failed: ${detail}`);
+  }
+  return res.json();
+}
+
+export async function getHealth(signal?: AbortSignal): Promise<{ status: string }> {
+  const res = await fetch(`${API_BASE}/health`, {
+    cache: "no-store",
+    headers: authHeaders(),
+    signal,
+  });
+  if (!res.ok) throw new Error(`health failed: ${res.status}`);
+  return res.json();
+}
+
 export async function listRuns(): Promise<RunSummary[]> {
   const res = await fetch(`${API_BASE}/runs`, { cache: "no-store", headers: authHeaders() });
   if (!res.ok) throw new Error(`listRuns failed: ${res.status}`);
