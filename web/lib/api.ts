@@ -4,11 +4,19 @@ import type { PPGRow, PPGSelectionRow, RunStateFull, RunSummary } from "./types"
 const API_BASE = getApiBase();
 const authHeaders = getAuthHeaders;
 
-export async function createRun(dataPath: string, gatesEnabled = false): Promise<RunSummary> {
+export async function createRun(
+  dataPath: string,
+  gatesEnabled = false,
+  agentMode = true,
+): Promise<RunSummary> {
   const res = await fetch(`${API_BASE}/runs`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders() },
-    body: JSON.stringify({ data_path: dataPath, gates_enabled: gatesEnabled }),
+    body: JSON.stringify({
+      data_path: dataPath,
+      gates_enabled: gatesEnabled,
+      agent_mode: agentMode,
+    }),
   });
   if (!res.ok) throw new Error(`createRun failed: ${res.status}`);
   return res.json();

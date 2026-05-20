@@ -8,6 +8,7 @@ three data-preparation agents for real and leaves later stages as stubs.
 from __future__ import annotations
 
 from core.agents.base import Agent, StubAgent
+from core.llm.client import AnthropicClient, LLMProvider
 from core.agents.decomposition import DecompositionAgent
 from core.agents.eda import EDAAgent
 from core.agents.feature_engineering import FeatureEngineeringAgent
@@ -45,9 +46,10 @@ REAL_AGENTS: dict[str, type[Agent]] = {
 }
 
 
-def _build_agent(name: str) -> Agent:
+def _build_agent(name: str, *, agent_mode: bool = True) -> Agent:
     cls = REAL_AGENTS.get(name)
-    return cls() if cls else StubAgent(name=name)
+    llm = AnthropicClient() if agent_mode else AnthropicClient(provider=LLMProvider.DRY_RUN)
+    return cls(llm=llm) if cls else StubAgent(name=name, llm=llm)
 
 
 async def _wait_for_gate(run: RunState, agent_name: str) -> bool:
@@ -87,7 +89,8 @@ async def _wait_for_gate(run: RunState, agent_name: str) -> bool:
             run.agents[agent_name].artifacts = []
             run.agents[agent_name].outputs = {}
             try:
-                await _build_agent(agent_name).run(run)
+                agent_mode = bool(run.options.get("agent_mode", True))
+                await _build_agent(agent_name, agent_mode=agent_mode).run(run)
                 run.save()
             except Exception as exc:  # noqa: BLE001
                 run.agents[agent_name].status = AgentStatus.failed
@@ -114,18 +117,19 @@ async def _wait_for_gate(run: RunState, agent_name: str) -> bool:
         return approved
 
 
-async def execute(run: RunState, gates_enabled: bool = True) -> RunState:
+async def execute(run: RunState, gates_enabled: bool = True, agent_mode: bool = True) -> RunState:
     run.status = RunStatus.running
     if gates_enabled:
         run.gates = dict(DEFAULT_GATES)
     else:
         run.gates = {}
+    run.options = {**run.options, "agent_mode": agent_mode}
     run.save()
 
     await bus.publish(run.id, run.run_dir, {"type": "run_started", "agents": AGENT_ORDER})
 
     for agent_name in AGENT_ORDER:
-        agent = _build_agent(agent_name)
+        agent = _build_agent(agent_name, agent_mode=agent_mode)
         try:
             await agent.run(run)
             run.save()

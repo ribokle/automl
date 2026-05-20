@@ -26,6 +26,7 @@ export default function Home() {
   const [file, setFile] = useState<File | null>(null);
   const [syntheticPath, setSyntheticPath] = useState("data/synthetic.csv");
   const [gatesEnabled, setGatesEnabled] = useState(false);
+  const [agentMode, setAgentMode] = useState(true);
 
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
@@ -68,10 +69,15 @@ export default function Home() {
         const result = await uploadCsv(file);
         dataPath = result.path;
       } else {
+        if (!syntheticPath.trim()) {
+          setError("Enter a server-side path first.");
+          setBusy(false);
+          return;
+        }
         dataPath = syntheticPath;
       }
       setStatus("Starting run…");
-      const run = await createRun(dataPath, gatesEnabled);
+      const run = await createRun(dataPath, gatesEnabled, agentMode);
       router.push(`/runs/${run.id}`);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
@@ -79,6 +85,13 @@ export default function Home() {
       setStatus(null);
     }
   }
+
+  const selectedLabel =
+    mode === "upload"
+      ? file
+        ? `${file.name} (${(file.size / (1024 * 1024)).toFixed(2)} MiB)`
+        : null
+      : syntheticPath.trim() || null;
 
   return (
     <main className="space-y-8">
@@ -116,64 +129,86 @@ export default function Home() {
           </button>
         </div>
 
-        {mode === "upload" ? (
-          <div>
-            <label className="block text-xs text-slate-400">
-              CSV file (required columns: <code>sku, store_id, week_start, units, price, tpr_flag</code>)
-            </label>
-            <div className="mt-2 flex items-center gap-3">
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".csv,text/csv,application/csv,application/vnd.ms-excel"
-                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-                className="block w-full text-sm text-slate-300 file:mr-3 file:rounded file:border-0 file:bg-slate-800 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-slate-200 hover:file:bg-slate-700"
-              />
-              {file && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setFile(null);
-                    if (fileInputRef.current) fileInputRef.current.value = "";
-                  }}
-                  className="shrink-0 rounded border border-slate-700 px-2 py-1 text-[11px] text-slate-400 hover:text-slate-200"
-                >
-                  clear
-                </button>
-              )}
-            </div>
+        <div className={mode === "upload" ? "" : "hidden"}>
+          <label className="block text-xs text-slate-400">
+            CSV file (required columns: <code>sku, store_id, week_start, units, price, tpr_flag</code>)
+          </label>
+          <div className="mt-2 flex items-center gap-3">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".csv,text/csv,application/csv,application/vnd.ms-excel"
+              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+              className="block w-full text-sm text-slate-300 file:mr-3 file:rounded file:border-0 file:bg-slate-800 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-slate-200 hover:file:bg-slate-700"
+            />
             {file && (
-              <p className="mt-2 font-mono text-[11px] text-slate-500">
-                {file.name} · {(file.size / (1024 * 1024)).toFixed(2)} MiB
-              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setFile(null);
+                  if (fileInputRef.current) fileInputRef.current.value = "";
+                }}
+                className="shrink-0 rounded border border-slate-700 px-2 py-1 text-[11px] text-slate-400 hover:text-slate-200"
+              >
+                clear
+              </button>
             )}
           </div>
-        ) : (
-          <div>
-            <label className="block text-xs text-slate-400">
-              CSV path on the API server filesystem
-            </label>
-            <input
-              className="mt-1 w-full rounded border border-slate-700 bg-slate-950 px-3 py-2 font-mono text-sm"
-              value={syntheticPath}
-              onChange={(e) => setSyntheticPath(e.target.value)}
-              placeholder="data/synthetic.csv"
-            />
-            <p className="mt-2 text-[11px] text-slate-500">
-              Default points at the bundled panel. Run <code>make seed</code> first if absent.
-            </p>
-          </div>
-        )}
+        </div>
 
-        <label className="mt-4 flex items-center gap-2 text-xs text-slate-300">
+        <div className={mode === "synthetic" ? "" : "hidden"}>
+          <label className="block text-xs text-slate-400">
+            CSV path on the API server filesystem
+          </label>
           <input
-            type="checkbox"
-            checked={gatesEnabled}
-            onChange={(e) => setGatesEnabled(e.target.checked)}
-            className="h-3.5 w-3.5 accent-emerald-500"
+            className="mt-1 w-full rounded border border-slate-700 bg-slate-950 px-3 py-2 font-mono text-sm"
+            value={syntheticPath}
+            onChange={(e) => setSyntheticPath(e.target.value)}
+            placeholder="data/synthetic.csv"
           />
-          Enable approval gates (pause after PPG mapping, modeling, optimization)
-        </label>
+          <p className="mt-2 text-[11px] text-slate-500">
+            Default points at the bundled panel. Run <code>make seed</code> first if absent.
+          </p>
+        </div>
+
+        <div className="mt-4 rounded border border-slate-800 bg-slate-950/60 px-3 py-2 text-[11px]">
+          <span className="text-slate-500">Selected: </span>
+          {selectedLabel ? (
+            <span className="font-mono text-slate-300">{selectedLabel}</span>
+          ) : (
+            <span className="italic text-slate-600">none yet</span>
+          )}
+        </div>
+
+        <div className="mt-4 space-y-2">
+          <label className="flex items-start gap-2 text-xs text-slate-300">
+            <input
+              type="checkbox"
+              checked={agentMode}
+              onChange={(e) => setAgentMode(e.target.checked)}
+              className="mt-0.5 h-3.5 w-3.5 accent-emerald-500"
+            />
+            <span>
+              <span className="font-medium text-slate-200">Agent mode</span> — call the LLM
+              for narratives and analyst-style summaries.
+              <span className="block text-[10px] text-slate-500">
+                Off: every agent uses deterministic fallbacks only (no LLM spend, identical output across runs).
+              </span>
+            </span>
+          </label>
+          <label className="flex items-start gap-2 text-xs text-slate-300">
+            <input
+              type="checkbox"
+              checked={gatesEnabled}
+              onChange={(e) => setGatesEnabled(e.target.checked)}
+              className="mt-0.5 h-3.5 w-3.5 accent-emerald-500"
+            />
+            <span>
+              <span className="font-medium text-slate-200">Approval gates</span> — pause
+              after PPG mapping, modeling, and optimization for manual review.
+            </span>
+          </label>
+        </div>
 
         <div className="mt-5 flex items-center gap-3">
           <button

@@ -27,10 +27,13 @@ async def create_run(
     if not data_path.exists():
         raise HTTPException(status_code=400, detail=f"data_path not found: {data_path}")
 
+    options: dict[str, Any] = {"agent_mode": req.agent_mode}
+    if req.label:
+        options["label"] = req.label
     state = RunState.new(
         data_path=str(data_path.resolve()),
         run_dir=run_dir_base / "auto",
-        options={"label": req.label} if req.label else {},
+        options=options,
     )
     state_run_dir = run_dir_base / state.id
     state_run_dir.mkdir(parents=True, exist_ok=True)
@@ -39,7 +42,7 @@ async def create_run(
     state.save()
     _RUNS[state.id] = state
 
-    background.add_task(_run_in_background, state, req.gates_enabled)
+    background.add_task(_run_in_background, state, req.gates_enabled, req.agent_mode)
 
     return RunSummary(
         id=state.id,
@@ -50,8 +53,8 @@ async def create_run(
     )
 
 
-async def _run_in_background(state: RunState, gates_enabled: bool) -> None:
-    await execute(state, gates_enabled=gates_enabled)
+async def _run_in_background(state: RunState, gates_enabled: bool, agent_mode: bool) -> None:
+    await execute(state, gates_enabled=gates_enabled, agent_mode=agent_mode)
 
 
 @router.get("", response_model=list[RunSummary])
