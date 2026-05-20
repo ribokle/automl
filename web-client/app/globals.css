@@ -1,0 +1,117 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --font-sans: "Inter", system-ui, sans-serif;
+    --font-display: "Inter", system-ui, sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, monospace;
+    --radius: 0.625rem;
+
+    /* fallback (variant A light) — overridden by ThemeStyle per variant */
+    --background: 0 0% 98%;
+    --surface: 0 0% 100%;
+    --raised: 0 0% 100%;
+    --foreground: 240 6% 10%;
+    --muted: 240 5% 96%;
+    --muted-foreground: 240 4% 36%;
+    --border: 240 6% 90%;
+    --ring: 158 64% 32%;
+    --accent: 158 64% 32%;
+    --accent-foreground: 0 0% 100%;
+    --positive: 158 64% 32%;
+    --negative: 354 70% 54%;
+    --warning: 38 92% 50%;
+    --shadow-card: 0 1px 2px rgb(0 0 0 / 0.04), 0 4px 12px rgb(0 0 0 / 0.04);
+    --shadow-raised: 0 4px 12px rgb(0 0 0 / 0.06), 0 16px 32px rgb(0 0 0 / 0.06);
+    --shadow-glow: 0 0 0 1px hsl(var(--accent) / 0.2);
+  }
+
+  .dark {
+    --background: 240 6% 4%;
+    --surface: 240 5% 7%;
+    --raised: 240 5% 9%;
+    --foreground: 0 0% 96%;
+    --muted: 240 4% 14%;
+    --muted-foreground: 240 5% 64%;
+    --border: 240 4% 16%;
+    --ring: 158 89% 50%;
+    --accent: 158 89% 50%;
+    --accent-foreground: 240 6% 4%;
+    --positive: 158 89% 50%;
+    --negative: 350 89% 60%;
+    --warning: 38 92% 60%;
+    --shadow-card: 0 1px 2px rgb(0 0 0 / 0.4), 0 4px 12px rgb(0 0 0 / 0.3);
+    --shadow-raised: 0 4px 12px rgb(0 0 0 / 0.5), 0 24px 48px rgb(0 0 0 / 0.4);
+    --shadow-glow: 0 0 0 1px hsl(var(--accent) / 0.3), 0 0 24px hsl(var(--accent) / 0.2);
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans;
+    font-feature-settings: "cv11", "ss01", "ss03";
+  }
+
+  ::selection {
+    background-color: hsl(var(--accent) / 0.25);
+    color: hsl(var(--foreground));
+  }
+
+  /* tabular numbers in tables, KPI cards, etc. */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+  .text-pretty {
+    text-wrap: pretty;
+  }
+  .bg-grid {
+    background-image:
+      linear-gradient(to right, hsl(var(--border) / 0.4) 1px, transparent 1px),
+      linear-gradient(to bottom, hsl(var(--border) / 0.4) 1px, transparent 1px);
+    background-size: 32px 32px;
+  }
+  .bg-aurora-dark {
+    background:
+      radial-gradient(60% 60% at 20% 10%, rgba(59, 7, 100, 0.55), transparent 60%),
+      radial-gradient(60% 60% at 90% 30%, rgba(15, 118, 110, 0.45), transparent 60%),
+      radial-gradient(60% 60% at 50% 100%, rgba(30, 64, 175, 0.5), transparent 60%),
+      #0b1027;
+  }
+  .bg-aurora-light {
+    background:
+      radial-gradient(60% 60% at 20% 10%, rgba(196, 181, 253, 0.45), transparent 60%),
+      radial-gradient(60% 60% at 90% 30%, rgba(110, 231, 183, 0.45), transparent 60%),
+      radial-gradient(60% 60% at 50% 100%, rgba(253, 224, 71, 0.4), transparent 60%),
+      #faf9ff;
+  }
+  .glass-dark {
+    background: rgba(255, 255, 255, 0.04);
+    backdrop-filter: blur(24px) saturate(140%);
+    -webkit-backdrop-filter: blur(24px) saturate(140%);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.08),
+      0 8px 32px rgba(0, 0, 0, 0.3);
+  }
+  .glass-light {
+    background: rgba(255, 255, 255, 0.7);
+    backdrop-filter: blur(18px) saturate(140%);
+    -webkit-backdrop-filter: blur(18px) saturate(140%);
+    border: 1px solid rgba(0, 0, 0, 0.05);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.5),
+      0 8px 32px rgba(15, 23, 42, 0.06);
+  }
+}
