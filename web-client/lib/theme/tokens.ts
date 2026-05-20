@@ -12,6 +12,7 @@ export interface ColorPack {
     primary: string;
     primaryAlt: string;
     secondary: string;
+    baseline: string;
     positive: string;
     negative: string;
     grid: string;
@@ -34,20 +35,23 @@ const SHARED_DARK: Record<string, string> = {
   "--shadow-glow": "0 0 0 1px hsl(var(--accent) / 0.3)",
 };
 
+const RUNWAY_CHART_COLORS: ColorPack["chartColors"] = {
+  primary: "#8B5CF6",
+  primaryAlt: "#A78BFA",
+  secondary: "#22D3EE",
+  baseline: "#94A3B8",
+  positive: "#10B981",
+  negative: "#F43F5E",
+  grid: "rgba(148, 163, 184, 0.18)",
+};
+
 export const COLOR_OPTIONS: Record<ColorOption, ColorPack> = {
   vault: {
     id: "vault",
     name: "Vault",
     description: "Mercury-inspired. Cream + mint. Light-first.",
     defaultMode: "light",
-    chartColors: {
-      primary: "#4CC09C",
-      primaryAlt: "#1F8F6E",
-      secondary: "#94A3B8",
-      positive: "#1F8F6E",
-      negative: "#DC2626",
-      grid: "rgba(15, 23, 42, 0.06)",
-    },
+    chartColors: RUNWAY_CHART_COLORS,
     light: {
       ...SHARED_LIGHT,
       "--background": "48 33% 97%",
@@ -88,14 +92,7 @@ export const COLOR_OPTIONS: Record<ColorOption, ColorPack> = {
     name: "Marquee",
     description: "Runway-inspired. Near-black + violet. Dark-first.",
     defaultMode: "dark",
-    chartColors: {
-      primary: "#A78BFA",
-      primaryAlt: "#7C3AED",
-      secondary: "#5EEAD4",
-      positive: "#34D399",
-      negative: "#FB7185",
-      grid: "rgba(255,255,255,0.07)",
-    },
+    chartColors: RUNWAY_CHART_COLORS,
     light: {
       ...SHARED_LIGHT,
       "--background": "240 20% 98%",

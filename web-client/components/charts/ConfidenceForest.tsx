@@ -77,7 +77,7 @@ export function ConfidenceForest({ data }: Props) {
           <ReferenceLine x={-1} stroke={c.primary} strokeDasharray="3 3" strokeOpacity={0.45} />
           <Bar dataKey="elasticity" radius={[0, 4, 4, 0]} barSize={12}>
             {shaped.map((d, i) => (
-              <Cell key={i} fill={d.elasticity < -1 ? c.primary : c.secondary} />
+              <Cell key={i} fill={d.elasticity < -1 ? c.primary : c.baseline} />
             ))}
             <ErrorBar dataKey="err" width={6} strokeWidth={1.2} stroke="currentColor" />
           </Bar>

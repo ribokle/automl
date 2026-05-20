@@ -12,7 +12,7 @@ export function ThemeStyle({ option }: { option: ColorOption }) {
     [data-color="${option}"] {
       ${vars(pack.light)}
     }
-    [data-color="${option}"].dark {
+    .dark [data-color="${option}"] {
       ${vars(pack.dark)}
     }
   `;

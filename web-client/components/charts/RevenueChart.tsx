@@ -29,12 +29,13 @@ export function RevenueChart({ data }: Props) {
         <AreaChart data={data} margin={{ top: 12, right: 8, left: 0, bottom: 0 }}>
           <defs>
             <linearGradient id={`grad-baseline-${option}`} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={c.secondary} stopOpacity={0.25} />
-              <stop offset="100%" stopColor={c.secondary} stopOpacity={0} />
+              <stop offset="0%" stopColor={c.baseline} stopOpacity={0.18} />
+              <stop offset="100%" stopColor={c.baseline} stopOpacity={0} />
             </linearGradient>
             <linearGradient id={`grad-proposed-${option}`} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={c.primary} stopOpacity={0.45} />
-              <stop offset="100%" stopColor={c.primary} stopOpacity={0} />
+              <stop offset="0%" stopColor={c.primary} stopOpacity={0.55} />
+              <stop offset="60%" stopColor={c.secondary} stopOpacity={0.15} />
+              <stop offset="100%" stopColor={c.secondary} stopOpacity={0} />
             </linearGradient>
           </defs>
           <CartesianGrid stroke={c.grid} strokeDasharray="0" vertical={false} />
@@ -71,7 +72,7 @@ export function RevenueChart({ data }: Props) {
           <Area
             type="monotone"
             dataKey="baseline_revenue"
-            stroke={c.secondary}
+            stroke={c.baseline}
             strokeWidth={1.5}
             strokeDasharray="3 3"
             fill={`url(#grad-baseline-${option})`}
@@ -81,7 +82,7 @@ export function RevenueChart({ data }: Props) {
             type="monotone"
             dataKey="proposed_revenue"
             stroke={c.primary}
-            strokeWidth={2}
+            strokeWidth={2.25}
             fill={`url(#grad-proposed-${option})`}
             isAnimationActive
           />
