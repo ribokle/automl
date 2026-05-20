@@ -108,12 +108,12 @@ class RunState(BaseModel):
 
     def save(self) -> Path:
         path = Path(self.run_dir) / "state.json"
-        path.write_text(self.model_dump_json(indent=2))
+        path.write_text(self.model_dump_json(indent=2), encoding="utf-8")
         return path
 
     @classmethod
     def load(cls, run_dir: Path) -> "RunState":
-        return cls.model_validate_json((run_dir / "state.json").read_text())
+        return cls.model_validate_json((run_dir / "state.json").read_text(encoding="utf-8"))
 
 
 def append_event(run_dir: Path, event: dict[str, Any]) -> None:

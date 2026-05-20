@@ -108,7 +108,7 @@ class IngestionAgent(Agent):
             ge=ge_results,
         )
         report_path = run_dir / "ingestion_report.json"
-        report_path.write_text(report.model_dump_json(indent=2))
+        report_path.write_text(report.model_dump_json(indent=2), encoding="utf-8")
         result.artifacts.append(
             ArtifactRef(
                 path=str(report_path),

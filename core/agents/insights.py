@@ -194,7 +194,7 @@ class InsightsAgent(Agent):
 
         html = await asyncio.to_thread(build_html, payload)
         html_path = run_dir / "report.html"
-        html_path.write_text(html)
+        html_path.write_text(html, encoding="utf-8")
         result.artifacts.append(
             ArtifactRef(
                 path=str(html_path),
