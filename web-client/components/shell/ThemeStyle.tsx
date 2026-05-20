@@ -1,5 +1,4 @@
-import { THEMES } from "@/lib/theme/tokens";
-import type { Variant } from "@/lib/types";
+import { COLOR_OPTIONS, type ColorOption } from "@/lib/theme/tokens";
 
 function vars(record: Record<string, string>): string {
   return Object.entries(record)
@@ -7,18 +6,14 @@ function vars(record: Record<string, string>): string {
     .join("");
 }
 
-export function ThemeStyle({ variant }: { variant: Variant }) {
-  const t = THEMES[variant];
+export function ThemeStyle({ option }: { option: ColorOption }) {
+  const pack = COLOR_OPTIONS[option];
   const css = `
-    [data-variant="${variant}"] {
-      ${vars(t.light)}
-      --radius: ${t.radius};
-      --font-sans: ${t.fonts.sans};
-      --font-display: ${t.fonts.display};
-      --font-mono: ${t.fonts.mono};
+    [data-color="${option}"] {
+      ${vars(pack.light)}
     }
-    [data-variant="${variant}"].dark {
-      ${vars(t.dark)}
+    [data-color="${option}"].dark {
+      ${vars(pack.dark)}
     }
   `;
   return <style dangerouslySetInnerHTML={{ __html: css }} />;

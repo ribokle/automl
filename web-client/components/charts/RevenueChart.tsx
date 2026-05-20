@@ -4,87 +4,85 @@ import {
   Area,
   AreaChart,
   CartesianGrid,
-  Legend,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
 
-import { THEMES } from "@/lib/theme/tokens";
+import { COLOR_OPTIONS } from "@/lib/theme/tokens";
 import { fmtUsdCompact } from "@/lib/format";
-import type { Variant, WeeklyPoint } from "@/lib/types";
+import { useColorOption } from "@/components/shell/ColorOptionProvider";
+import type { WeeklyPoint } from "@/lib/types";
 
 interface Props {
-  variant: Variant;
   data: WeeklyPoint[];
 }
 
-export function RevenueChart({ variant, data }: Props) {
-  const c = THEMES[variant].chartColors;
+export function RevenueChart({ data }: Props) {
+  const { option } = useColorOption();
+  const c = COLOR_OPTIONS[option].chartColors;
+
   return (
-    <div className="h-[320px] w-full">
+    <div className="h-[300px] w-full">
       <ResponsiveContainer width="100%" height="100%">
-        <AreaChart data={data} margin={{ top: 16, right: 12, left: 0, bottom: 0 }}>
+        <AreaChart data={data} margin={{ top: 12, right: 8, left: 0, bottom: 0 }}>
           <defs>
-            <linearGradient id={`grad-base-${variant}`} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor={c.secondary} stopOpacity={0.35} />
-              <stop offset="95%" stopColor={c.secondary} stopOpacity={0} />
+            <linearGradient id={`grad-baseline-${option}`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={c.secondary} stopOpacity={0.25} />
+              <stop offset="100%" stopColor={c.secondary} stopOpacity={0} />
             </linearGradient>
-            <linearGradient id={`grad-prop-${variant}`} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor={c.primary} stopOpacity={0.55} />
-              <stop offset="95%" stopColor={c.primary} stopOpacity={0} />
+            <linearGradient id={`grad-proposed-${option}`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={c.primary} stopOpacity={0.45} />
+              <stop offset="100%" stopColor={c.primary} stopOpacity={0} />
             </linearGradient>
           </defs>
-          <CartesianGrid stroke={c.grid} strokeDasharray="3 3" vertical={false} />
+          <CartesianGrid stroke={c.grid} strokeDasharray="0" vertical={false} />
           <XAxis
             dataKey="week"
             stroke="currentColor"
-            opacity={0.5}
+            opacity={0.45}
             tickLine={false}
             axisLine={false}
-            fontSize={12}
+            fontSize={11}
+            interval="preserveStartEnd"
           />
           <YAxis
             stroke="currentColor"
-            opacity={0.5}
+            opacity={0.45}
             tickLine={false}
             axisLine={false}
-            fontSize={12}
+            fontSize={11}
             tickFormatter={(v) => fmtUsdCompact(Number(v))}
-            width={64}
+            width={56}
           />
           <Tooltip
-            cursor={{ stroke: c.primary, strokeOpacity: 0.4 }}
+            cursor={{ stroke: c.primary, strokeOpacity: 0.4, strokeWidth: 1 }}
             contentStyle={{
               background: "hsl(var(--raised))",
-              border: "1px solid hsl(var(--border))",
+              border: "1px solid hsl(var(--hairline))",
               borderRadius: 8,
               fontSize: 12,
               color: "hsl(var(--foreground))",
+              boxShadow: "var(--shadow-card)",
             }}
-            formatter={(v: number) => fmtUsdCompact(v)}
-          />
-          <Legend
-            iconType="line"
-            wrapperStyle={{ fontSize: 12, color: "hsl(var(--muted-foreground))" }}
+            formatter={(v: number, name: string) => [fmtUsdCompact(v), name === "baseline_revenue" ? "Status quo" : "Proposed"]}
           />
           <Area
             type="monotone"
             dataKey="baseline_revenue"
-            name="Status quo"
             stroke={c.secondary}
-            strokeWidth={2}
-            fill={`url(#grad-base-${variant})`}
+            strokeWidth={1.5}
+            strokeDasharray="3 3"
+            fill={`url(#grad-baseline-${option})`}
             isAnimationActive
           />
           <Area
             type="monotone"
             dataKey="proposed_revenue"
-            name="Proposed"
             stroke={c.primary}
-            strokeWidth={2.5}
-            fill={`url(#grad-prop-${variant})`}
+            strokeWidth={2}
+            fill={`url(#grad-proposed-${option})`}
             isAnimationActive
           />
         </AreaChart>

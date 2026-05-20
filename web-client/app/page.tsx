@@ -1,70 +1,62 @@
 import Link from "next/link";
-import { ArrowUpRight } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 
-import { THEMES } from "@/lib/theme/tokens";
-import { Badge } from "@/components/ui/badge";
+import { loadClientPayload } from "@/lib/data";
+import { AppNav } from "@/components/shell/AppNav";
+import { AnchorNumber } from "@/components/shell/AnchorNumber";
+import { Button } from "@/components/ui/button";
 
-export default function HomePage() {
+export default async function HomePage() {
+  const payload = await loadClientPayload();
+  const repriced = payload.recommendations.filter((r) => Math.abs(r.delta_pct) > 0.005).length;
+
   return (
-    <main className="relative min-h-screen overflow-hidden">
-      <div className="pointer-events-none absolute inset-0 bg-aurora-light dark:bg-aurora-dark opacity-70" />
-      <div className="relative z-10 mx-auto flex min-h-screen max-w-6xl flex-col px-6 py-16 md:py-24">
-        <header className="flex flex-col gap-4">
-          <Badge variant="outline" className="w-fit border-foreground/20 backdrop-blur">
-            Client-facing prototypes
-          </Badge>
-          <h1 className="font-display text-4xl font-semibold tracking-tight md:text-6xl text-balance">
-            Three directions for the AutoPrice client UI.
-          </h1>
-          <p className="max-w-2xl text-pretty text-lg text-muted-foreground">
-            The same six surfaces — landing, dashboard, recommendations, simulate, validation,
-            methodology — wrapped in three distinct visual languages. Pick one or mix.
-          </p>
-        </header>
+    <>
+      <AppNav />
+      <main className="mx-auto flex min-h-[calc(100vh-3.5rem)] max-w-6xl flex-col px-6">
+        <div className="flex-1 grid items-center py-16 md:py-24">
+          <div className="grid gap-10 md:grid-cols-[1.2fr_1fr]">
+            <div className="flex flex-col gap-6">
+              <div className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                Quarterly pricing review · 13-week horizon
+              </div>
+              <h1 className="display max-w-2xl text-balance text-4xl font-semibold tracking-tight md:text-5xl lg:text-6xl">
+                We recommend repricing{" "}
+                <span className="text-accent">{repriced} of {payload.recommendations.length}</span>{" "}
+                of your Price-Pack Groups.
+              </h1>
+              <p className="max-w-xl text-pretty text-base text-muted-foreground md:text-lg">
+                {payload.narrative}
+              </p>
+              <div className="mt-2 flex flex-wrap items-center gap-3">
+                <Button asChild size="lg" className="gap-2">
+                  <Link href="/dashboard">
+                    Open the dashboard
+                    <ArrowRight className="size-4" />
+                  </Link>
+                </Button>
+                <Button asChild variant="ghost" size="lg">
+                  <Link href="/methodology">How it works</Link>
+                </Button>
+              </div>
+            </div>
 
-        <div className="mt-12 grid gap-6 md:grid-cols-3">
-          {(["a", "b", "c"] as const).map((v) => {
-            const t = THEMES[v];
-            return (
-              <Link
-                key={v}
-                href={`/proto/${v}/dashboard`}
-                className="group relative flex flex-col gap-4 overflow-hidden rounded-2xl border border-foreground/10 bg-background/60 p-8 backdrop-blur transition-all hover:border-foreground/30 hover:shadow-raised"
-              >
-                <div className="flex items-baseline justify-between">
-                  <span className="font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground">
-                    Variant {v.toUpperCase()}
-                  </span>
-                  <ArrowUpRight className="size-4 text-muted-foreground transition-transform group-hover:translate-x-1 group-hover:-translate-y-1" />
-                </div>
-                <div className="font-display text-2xl font-semibold tracking-tight md:text-3xl">
-                  {t.name}
-                </div>
-                <p className="text-sm text-muted-foreground">{t.tagline}</p>
-                <div className="mt-4 flex gap-2">
-                  <span
-                    className="size-6 rounded-full border border-foreground/10"
-                    style={{ background: t.chartColors.primary }}
-                  />
-                  <span
-                    className="size-6 rounded-full border border-foreground/10"
-                    style={{ background: t.chartColors.secondary }}
-                  />
-                  <span
-                    className="size-6 rounded-full border border-foreground/10"
-                    style={{ background: t.chartColors.positive }}
-                  />
-                </div>
-              </Link>
-            );
-          })}
+            <div className="flex items-end">
+              <AnchorNumber
+                label={payload.anchor.label}
+                value={payload.anchor.value}
+                delta={payload.anchor.delta}
+                detail={payload.anchor.detail}
+                size="xl"
+              />
+            </div>
+          </div>
         </div>
-
-        <footer className="mt-auto pt-16 text-sm text-muted-foreground">
-          Each variant ships light + dark mode. Toggle in the nav. Same content everywhere — the
-          comparison is purely visual.
+        <footer className="border-t border-hairline py-6 text-xs text-muted-foreground">
+          {payload.run_id ? `Run ${payload.run_id.slice(0, 8)}` : "Synthetic demo data"} ·
+          Generated {new Date(payload.generated_at).toLocaleString()}
         </footer>
-      </div>
-    </main>
+      </main>
+    </>
   );
 }

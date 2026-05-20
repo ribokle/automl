@@ -16,6 +16,7 @@ const config: Config = {
     extend: {
       colors: {
         border: "hsl(var(--border) / <alpha-value>)",
+        hairline: "hsl(var(--hairline))",
         ring: "hsl(var(--ring) / <alpha-value>)",
         background: "hsl(var(--background) / <alpha-value>)",
         surface: "hsl(var(--surface) / <alpha-value>)",
@@ -50,22 +51,12 @@ const config: Config = {
       },
       keyframes: {
         "fade-up": {
-          from: { opacity: "0", transform: "translateY(8px)" },
+          from: { opacity: "0", transform: "translateY(6px)" },
           to: { opacity: "1", transform: "translateY(0)" },
-        },
-        "aurora-drift": {
-          "0%, 100%": { transform: "translate3d(0,0,0) scale(1)" },
-          "50%": { transform: "translate3d(-2%, 1%, 0) scale(1.05)" },
-        },
-        shimmer: {
-          "0%": { backgroundPosition: "-200% 0" },
-          "100%": { backgroundPosition: "200% 0" },
         },
       },
       animation: {
         "fade-up": "fade-up 200ms ease-out both",
-        "aurora-drift": "aurora-drift 18s ease-in-out infinite",
-        shimmer: "shimmer 8s ease-in-out infinite",
       },
     },
   },

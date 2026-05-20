@@ -1,6 +1,7 @@
 import type {
   ClientPayload,
   ElasticityPoint,
+  Kpi,
   MethodologyStep,
   PPGForestPoint,
   Recommendation,
@@ -229,42 +230,49 @@ function buildMethodology(): MethodologyStep[] {
       title: "We read your weekly panel",
       description:
         "SKU × store × week data is validated against schema, distribution, and relationship checks before anything downstream runs.",
+      implication: "Bad data never makes it past step one.",
     },
     {
       agent: "Grouping",
       title: "We grouped SKUs into Price-Pack Groups",
       description:
         "An agent clusters SKUs by brand, pack, and size so we can price related items consistently.",
+      implication: "Sister packs move together — no ladder breaks.",
     },
     {
       agent: "Features",
       title: "We engineered a clean feature set",
       description:
         "Lagged prices, seasonality, promo flags, and competitor signals — all checked for collinearity (VIF < 10).",
+      implication: "Every input earns its keep before modelling.",
     },
     {
       agent: "Modeling",
       title: "We fit price-elasticity models",
       description:
         "Log-log regression with rolling-origin cross-validation. Sign and magnitude are sanity-checked against history.",
+      implication: "We know how each PPG responds to price.",
     },
     {
       agent: "Decomposition",
       title: "We attributed every unit to a driver",
       description:
         "Each week's volume is split into base, price, promo, seasonality, and shock — residuals stay under 1%.",
+      implication: "Nothing unexplained hides in the recommendation.",
     },
     {
       agent: "Optimisation",
       title: "We searched the constrained price space",
       description:
         "Mixed-integer programme respecting ladder, margin floor, and competitor-gap rules. No surprises.",
+      implication: "Every proposed price is feasible by construction.",
     },
     {
       agent: "Validation",
       title: "We trust-checked the answer",
       description:
         "Hold-out WAPE, sign checks, constraint feasibility, and confidence bands before anything reaches you.",
+      implication: "Recommendations clear six gates before you see them.",
     },
   ];
 }
@@ -278,50 +286,54 @@ export function buildMockPayload(runId: string | null = null): ClientPayload {
     recommendations.reduce((a, r) => a + r.confidence, 0) / recommendations.length;
   const flagged = recommendations.filter((r) => r.flagged).length;
 
-  const kpis = [
-    {
-      label: "Forecast quarterly revenue lift",
-      value: `+$${(totalLift / 1000).toFixed(0)}K`,
-      delta: `+${((totalLift / 5_400_000) * 100).toFixed(1)}%`,
-      positive: true,
-      hint: "13-week projection vs. status-quo pricing.",
-    },
+  const liftPct = (totalLift / 5_400_000) * 100;
+  const anchor = {
+    label: "Forecast quarterly revenue lift",
+    value: `+$${(totalLift / 1000).toFixed(0)}K`,
+    delta: `+${liftPct.toFixed(1)}%`,
+    detail: "13-week projection vs. status-quo pricing.",
+  };
+
+  const kpis: Kpi[] = [
     {
       label: "PPGs re-priced",
       value: `${repriced} / ${recommendations.length}`,
-      delta: undefined,
+      hint: "4 up-ticks · 4 down-ticks",
       positive: true,
-      hint: "Of these, 4 are up-ticks and 4 are down-ticks.",
     },
     {
       label: "Model confidence",
       value: `${(avgConfidence * 100).toFixed(0)}%`,
-      delta: undefined,
+      hint: "Lowest 82% · highest 94%",
       positive: true,
-      hint: "Average across PPGs; lowest is 82% on the energy multipack.",
     },
     {
-      label: "PPGs to review",
+      label: "For review",
       value: `${flagged}`,
-      delta: undefined,
-      positive: flagged === 0,
       hint: flagged
-        ? "Confidence below 84% — worth a human sanity-check before commit."
-        : "All recommendations cleared the trust threshold.",
+        ? "Below 84% confidence — eyeball before commit"
+        : "All cleared the trust threshold",
+      positive: flagged === 0,
     },
   ];
+
+  const validation = buildValidation();
+  const passes = validation.filter((v) => v.status === "pass").length;
+  const trust_score = Math.round((passes / validation.length) * 100);
 
   return {
     run_id: runId,
     generated_at: new Date().toISOString(),
+    anchor,
     kpis,
     weekly,
     recommendations,
     elasticity_by_ppg: buildElasticityCurves(recommendations),
-    validation: buildValidation(),
+    validation,
+    trust_score,
     forest: buildForest(recommendations),
     methodology: buildMethodology(),
     narrative:
-      "Across your 8 Price-Pack Groups we recommend a mix of small up-ticks on inelastic premium packs and gentle EDLP cuts on highly elastic multipacks. The blended effect adds projected quarterly revenue of low-six-figures while every proposed price clears your margin floor and ladder rules. One PPG sits at the competitor-gap ceiling — flagged for review.",
+      "We recommend repricing 6 of 8 Price-Pack Groups: small up-ticks on inelastic premium packs and gentle EDLP cuts on highly elastic multipacks. Every proposed price clears your margin floor and ladder rules. One sits at the competitor-gap ceiling and is flagged for review.",
   };
 }

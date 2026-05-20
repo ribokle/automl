@@ -1,4 +1,4 @@
-export type Variant = "a" | "b" | "c";
+export type ColorOption = "vault" | "marquee";
 
 export interface Kpi {
   label: string;
@@ -55,6 +55,7 @@ export interface MethodologyStep {
   agent: string;
   title: string;
   description: string;
+  implication: string;
 }
 
 export interface RunSummary {
@@ -68,10 +69,17 @@ export interface ClientPayload {
   run_id: string | null;
   generated_at: string;
   kpis: Kpi[];
+  anchor: {
+    label: string;
+    value: string;
+    delta: string;
+    detail: string;
+  };
   weekly: WeeklyPoint[];
   recommendations: Recommendation[];
   elasticity_by_ppg: Record<string, ElasticityPoint[]>;
   validation: ValidationCheck[];
+  trust_score: number;
   forest: PPGForestPoint[];
   methodology: MethodologyStep[];
   narrative: string;

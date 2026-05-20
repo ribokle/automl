@@ -13,16 +13,17 @@ import {
   YAxis,
 } from "recharts";
 
-import { THEMES } from "@/lib/theme/tokens";
-import type { PPGForestPoint, Variant } from "@/lib/types";
+import { COLOR_OPTIONS } from "@/lib/theme/tokens";
+import { useColorOption } from "@/components/shell/ColorOptionProvider";
+import type { PPGForestPoint } from "@/lib/types";
 
 interface Props {
-  variant: Variant;
   data: PPGForestPoint[];
 }
 
-export function ConfidenceForest({ variant, data }: Props) {
-  const c = THEMES[variant].chartColors;
+export function ConfidenceForest({ data }: Props) {
+  const { option } = useColorOption();
+  const c = COLOR_OPTIONS[option].chartColors;
   const shaped = data.map((p) => ({
     ppg: p.ppg_id.replace("ppg_", ""),
     elasticity: p.elasticity,
@@ -33,30 +34,30 @@ export function ConfidenceForest({ variant, data }: Props) {
   }));
 
   return (
-    <div className="h-[320px] w-full">
+    <div className="h-[260px] w-full">
       <ResponsiveContainer>
         <BarChart
           data={shaped}
           layout="vertical"
           margin={{ top: 8, right: 24, left: 8, bottom: 8 }}
         >
-          <CartesianGrid stroke={c.grid} strokeDasharray="3 3" horizontal={false} />
+          <CartesianGrid stroke={c.grid} horizontal={false} />
           <XAxis
             type="number"
             stroke="currentColor"
-            opacity={0.5}
+            opacity={0.45}
             tickLine={false}
             axisLine={false}
-            fontSize={12}
+            fontSize={11}
           />
           <YAxis
             type="category"
             dataKey="ppg"
             stroke="currentColor"
-            opacity={0.6}
+            opacity={0.55}
             tickLine={false}
             axisLine={false}
-            fontSize={12}
+            fontSize={11}
             width={40}
             tickFormatter={(v) => `PPG ${v}`}
           />
@@ -64,20 +65,21 @@ export function ConfidenceForest({ variant, data }: Props) {
             cursor={{ fill: "hsl(var(--muted) / 0.3)" }}
             contentStyle={{
               background: "hsl(var(--raised))",
-              border: "1px solid hsl(var(--border))",
+              border: "1px solid hsl(var(--hairline))",
               borderRadius: 8,
               fontSize: 12,
               color: "hsl(var(--foreground))",
+              boxShadow: "var(--shadow-card)",
             }}
             formatter={(v: number) => v.toFixed(2)}
           />
-          <ReferenceLine x={0} stroke="currentColor" strokeOpacity={0.4} />
-          <ReferenceLine x={-1} stroke={c.primary} strokeDasharray="3 3" strokeOpacity={0.4} />
-          <Bar dataKey="elasticity" radius={[0, 6, 6, 0]} barSize={14}>
+          <ReferenceLine x={0} stroke="currentColor" strokeOpacity={0.35} />
+          <ReferenceLine x={-1} stroke={c.primary} strokeDasharray="3 3" strokeOpacity={0.45} />
+          <Bar dataKey="elasticity" radius={[0, 4, 4, 0]} barSize={12}>
             {shaped.map((d, i) => (
               <Cell key={i} fill={d.elasticity < -1 ? c.primary : c.secondary} />
             ))}
-            <ErrorBar dataKey="err" width={6} strokeWidth={1.5} stroke="currentColor" />
+            <ErrorBar dataKey="err" width={6} strokeWidth={1.2} stroke="currentColor" />
           </Bar>
         </BarChart>
       </ResponsiveContainer>

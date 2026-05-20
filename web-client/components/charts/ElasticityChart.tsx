@@ -12,20 +12,29 @@ import {
   YAxis,
 } from "recharts";
 
-import { THEMES } from "@/lib/theme/tokens";
+import { COLOR_OPTIONS } from "@/lib/theme/tokens";
 import { fmtUsd, fmtIntCompact } from "@/lib/format";
-import type { ElasticityPoint, Variant } from "@/lib/types";
+import { useColorOption } from "@/components/shell/ColorOptionProvider";
+import type { ElasticityPoint } from "@/lib/types";
 
 interface Props {
-  variant: Variant;
   data: ElasticityPoint[];
   currentPrice: number;
   proposedPrice: number;
   metric: "units" | "revenue";
+  height?: number;
 }
 
-export function ElasticityChart({ variant, data, currentPrice, proposedPrice, metric }: Props) {
-  const c = THEMES[variant].chartColors;
+export function ElasticityChart({
+  data,
+  currentPrice,
+  proposedPrice,
+  metric,
+  height = 280,
+}: Props) {
+  const { option } = useColorOption();
+  const c = COLOR_OPTIONS[option].chartColors;
+
   const findClosest = (price: number) =>
     data.reduce((best, p) => (Math.abs(p.price - price) < Math.abs(best.price - price) ? p : best));
   const currentPt = findClosest(currentPrice);
@@ -33,32 +42,26 @@ export function ElasticityChart({ variant, data, currentPrice, proposedPrice, me
   const yKey = metric === "revenue" ? "revenue" : "units";
 
   return (
-    <div className="h-[300px] w-full">
+    <div className="w-full" style={{ height }}>
       <ResponsiveContainer>
         <ComposedChart data={data} margin={{ top: 16, right: 16, left: 0, bottom: 0 }}>
-          <defs>
-            <linearGradient id={`elas-${variant}`} x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0%" stopColor={c.negative} stopOpacity={0.7} />
-              <stop offset="100%" stopColor={c.primary} stopOpacity={0.9} />
-            </linearGradient>
-          </defs>
-          <CartesianGrid stroke={c.grid} strokeDasharray="3 3" vertical={false} />
+          <CartesianGrid stroke={c.grid} vertical={false} />
           <XAxis
             dataKey="price"
             stroke="currentColor"
-            opacity={0.5}
+            opacity={0.45}
             tickLine={false}
             axisLine={false}
-            fontSize={12}
+            fontSize={11}
             tickFormatter={(v) => fmtUsd(Number(v))}
           />
           <YAxis
             stroke="currentColor"
-            opacity={0.5}
+            opacity={0.45}
             tickLine={false}
             axisLine={false}
-            fontSize={12}
-            width={64}
+            fontSize={11}
+            width={56}
             tickFormatter={(v) =>
               metric === "revenue" ? fmtUsd(Number(v)) : fmtIntCompact(Number(v))
             }
@@ -67,10 +70,11 @@ export function ElasticityChart({ variant, data, currentPrice, proposedPrice, me
             cursor={{ stroke: c.primary, strokeOpacity: 0.5 }}
             contentStyle={{
               background: "hsl(var(--raised))",
-              border: "1px solid hsl(var(--border))",
+              border: "1px solid hsl(var(--hairline))",
               borderRadius: 8,
               fontSize: 12,
               color: "hsl(var(--foreground))",
+              boxShadow: "var(--shadow-card)",
             }}
             formatter={(v: number) =>
               metric === "revenue" ? fmtUsd(v) : fmtIntCompact(v)
@@ -80,22 +84,22 @@ export function ElasticityChart({ variant, data, currentPrice, proposedPrice, me
           <Line
             type="monotone"
             dataKey={yKey}
-            stroke={`url(#elas-${variant})`}
-            strokeWidth={3}
+            stroke={c.primary}
+            strokeWidth={2.5}
             dot={false}
           />
           <ReferenceLine
             x={currentPt.price}
             stroke="currentColor"
-            strokeOpacity={0.3}
-            strokeDasharray="4 4"
+            strokeOpacity={0.35}
+            strokeDasharray="3 3"
             label={{ value: "Current", position: "top", fontSize: 10, fill: "currentColor" }}
           />
           <ReferenceLine
             x={proposedPt.price}
             stroke={c.primary}
-            strokeDasharray="4 4"
-            label={{ value: "Proposed", position: "top", fontSize: 10, fill: c.primary }}
+            strokeDasharray="3 3"
+            label={{ value: "You", position: "top", fontSize: 10, fill: c.primary }}
           />
           <ReferenceDot
             x={proposedPt.price}
