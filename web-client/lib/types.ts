@@ -49,6 +49,11 @@ export interface PPGForestPoint {
   elasticity: number;
   ci_low: number;
   ci_high: number;
+  benchmark_low?: number;
+  benchmark_high?: number;
+  benchmark_mean?: number;
+  benchmark_source?: string;
+  benchmark_status?: "in_band" | "out_band_low" | "out_band_high" | "no_benchmark";
 }
 
 export interface MethodologyStep {

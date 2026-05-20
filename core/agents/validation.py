@@ -24,6 +24,10 @@ from pathlib import Path
 import pandas as pd
 
 from core.agents.base import Agent
+from core.benchmarks.elasticity import (
+    classify as classify_benchmark,
+    load_elasticity_benchmarks,
+)
 from core.config import get_settings
 from core.features.engineering import ENGINEERED_COLUMNS, TARGET
 from core.orchestrator.state import AgentResult, ArtifactRef, RunState
@@ -72,6 +76,26 @@ def _load_controls(run_dir: Path) -> list[str]:
         kept = blob.get("kept") or []
         return [c for c in kept if c not in (TARGET, "log_price")]
     return [c for c in ENGINEERED_COLUMNS if c not in (TARGET, "log_price")]
+
+
+def _load_ppg_categories(run_dir: Path) -> dict[str, str]:
+    """Read ppg_mapping_table.json -> {ppg_id: category}.
+
+    Returns an empty dict if the mapping artefact is missing; the
+    validation agent then records ``benchmark_status="no_benchmark"`` for
+    every PPG, which is the safe default.
+    """
+    path = run_dir / "ppg_mapping_table.json"
+    if not path.exists():
+        return {}
+    rows = json.loads(path.read_text())
+    out: dict[str, str] = {}
+    for row in rows:
+        ppg_id = row.get("ppg_id")
+        cat = row.get("category")
+        if ppg_id and cat and ppg_id not in out:
+            out[ppg_id] = str(cat)
+    return out
 
 
 def _collect_residuals(per_ppg: list[dict]) -> list[dict]:
@@ -126,6 +150,8 @@ class ValidationAgent(Agent):
         feats = await asyncio.to_thread(_load_features, run_dir)
         modeling = await asyncio.to_thread(_load_modeling, run_dir)
         controls = _load_controls(run_dir)
+        ppg_categories = _load_ppg_categories(run_dir)
+        benchmarks = load_elasticity_benchmarks()
 
         n_folds = int(
             (run.options.get("validation") or {}).get("n_folds", DEFAULT_N_FOLDS)
@@ -172,9 +198,13 @@ class ValidationAgent(Agent):
                     "folds": fold_results,
                 }
             )
+            category = ppg_categories.get(ppg_id)
+            bench = benchmarks.lookup(category)
+            bench_status = classify_benchmark(verdict.elasticity_mean, bench)
             flat_table.append(
                 {
                     "ppg_id": ppg_id,
+                    "category": category,
                     "winner": winner,
                     "verdict": verdict.verdict,
                     "sign_stability": verdict.sign_stability,
@@ -182,6 +212,12 @@ class ValidationAgent(Agent):
                     "elasticity_mean": verdict.elasticity_mean,
                     "elasticity_cv": verdict.elasticity_cv,
                     "n_folds": verdict.n_folds,
+                    "benchmark_status": bench_status,
+                    "benchmark_mean": bench.mean if bench else None,
+                    "benchmark_low": bench.lo if bench else None,
+                    "benchmark_high": bench.hi if bench else None,
+                    "benchmark_source": bench.source if bench else None,
+                    "benchmark_category": bench.display_name if bench else None,
                 }
             )
             await self.emit(
@@ -203,6 +239,16 @@ class ValidationAgent(Agent):
         n_pass = sum(1 for p in per_ppg if p["verdict"] == "pass")
         n_warn = sum(1 for p in per_ppg if p["verdict"] == "warn")
         n_fail = sum(1 for p in per_ppg if p["verdict"] == "fail")
+
+        n_in_benchmark = sum(1 for r in flat_table if r["benchmark_status"] == "in_band")
+        n_out_benchmark = sum(
+            1 for r in flat_table if r["benchmark_status"] in {"out_band_low", "out_band_high"}
+        )
+        n_no_benchmark = sum(1 for r in flat_table if r["benchmark_status"] == "no_benchmark")
+        n_with_benchmark = n_in_benchmark + n_out_benchmark
+        benchmark_pass_rate = (
+            round(n_in_benchmark / n_with_benchmark, 3) if n_with_benchmark else None
+        )
 
         headline, rationales = self._narrate(result, per_ppg)
         rationale_by_id = {r["ppg_id"]: r["rationale"] for r in rationales}
@@ -229,6 +275,14 @@ class ValidationAgent(Agent):
             "n_pass": n_pass,
             "n_warn": n_warn,
             "n_fail": n_fail,
+            "benchmark": {
+                "n_in_band": n_in_benchmark,
+                "n_out_band": n_out_benchmark,
+                "n_no_benchmark": n_no_benchmark,
+                "pass_rate": benchmark_pass_rate,
+                "grand_mean": benchmarks.grand_mean,
+                "sources": [s.get("key") for s in benchmarks.sources],
+            },
         }
         if skipped:
             report_blob["skipped"] = skipped
@@ -274,6 +328,10 @@ class ValidationAgent(Agent):
             "n_warn": n_warn,
             "n_fail": n_fail,
             "n_folds": n_folds,
+            "n_in_benchmark": n_in_benchmark,
+            "n_out_benchmark": n_out_benchmark,
+            "n_no_benchmark": n_no_benchmark,
+            "benchmark_pass_rate": benchmark_pass_rate,
         }
         if skipped:
             result.outputs["skipped"] = skipped

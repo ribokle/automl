@@ -37,8 +37,9 @@ export default async function ValidationPage() {
             The trust check
           </h1>
           <p className="max-w-2xl text-pretty text-muted-foreground">
-            Every recommendation passes through six gates before it lands on your dashboard.
-            Here's the receipt.
+            Every recommendation passes through seven gates before it lands on your dashboard —
+            statistical, business-rule, and a literature check against the Hoch (1995) Dominick's
+            ranges and the Bijmolt (2005) meta-analysis. Here's the receipt.
           </p>
         </header>
 
@@ -93,7 +94,9 @@ export default async function ValidationPage() {
               <h2 className="display mt-1 text-xl font-semibold">Confidence forest</h2>
               <p className="mt-1 max-w-xl text-sm text-muted-foreground">
                 Point estimate per PPG with the model's uncertainty band. Anything to the right
-                of -1 is inelastic — small price moves don't shift many units.
+                of −1 is inelastic — small price moves don't shift many units. The dashed line
+                at −2.62 is the Bijmolt (2005) meta-analysis grand mean; bars outlined in warning
+                colour sit outside the published category range.
               </p>
             </div>
             <ConfidenceForest data={payload.forest} />

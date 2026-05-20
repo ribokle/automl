@@ -173,7 +173,51 @@ function buildElasticityCurves(recs: Recommendation[]): Record<string, Elasticit
   return out;
 }
 
-function buildValidation(): ValidationCheck[] {
+// Published-elasticity bands for the mock categories.  Numbers come from
+// Hoch et al. 1995 (Dominick's chain-level) where available, with the
+// Bijmolt 2005 grand mean (-2.62) as the fallback.  Kept in sync with
+// core/benchmarks/data/elasticity.json — when the validation agent wires
+// real-run data into the forest, this mock becomes unused.
+const BENCHMARK_BY_CATEGORY: Record<
+  string,
+  { mean: number; lo: number; hi: number; source: string }
+> = {
+  Soda:   { mean: -3.18, lo: -4.13, hi: -2.23, source: "hoch_1995" },
+  Water:  { mean: -2.30, lo: -3.00, hi: -1.60, source: "bijmolt_2005" },
+  Energy: { mean: -2.30, lo: -3.00, hi: -1.60, source: "bijmolt_2005" },
+  Juice:  { mean: -2.62, lo: -3.41, hi: -1.83, source: "hoch_1995" },
+};
+
+function buildForest(recs: Recommendation[]): PPGForestPoint[] {
+  return recs.map((r) => {
+    const b = BENCHMARK_BY_CATEGORY[r.category];
+    let status: PPGForestPoint["benchmark_status"] = "no_benchmark";
+    if (b) {
+      if (r.elasticity > b.hi) status = "out_band_low";
+      else if (r.elasticity < b.lo) status = "out_band_high";
+      else status = "in_band";
+    }
+    return {
+      ppg_id: r.ppg_id,
+      elasticity: r.elasticity,
+      ci_low: r.elasticity - (1 - r.confidence) * 1.4,
+      ci_high: r.elasticity + (1 - r.confidence) * 1.4,
+      benchmark_low: b?.lo,
+      benchmark_high: b?.hi,
+      benchmark_mean: b?.mean,
+      benchmark_source: b?.source,
+      benchmark_status: status,
+    };
+  });
+}
+
+function buildValidation(forest: PPGForestPoint[]): ValidationCheck[] {
+  const benched = forest.filter((p) => p.benchmark_status && p.benchmark_status !== "no_benchmark");
+  const inBand = benched.filter((p) => p.benchmark_status === "in_band").length;
+  const total = benched.length;
+  const status: ValidationCheck["status"] =
+    total === 0 ? "warn" : inBand === total ? "pass" : inBand >= total - 1 ? "warn" : "fail";
+
   return [
     {
       name: "Sign check",
@@ -211,16 +255,16 @@ function buildValidation(): ValidationCheck[] {
       metric: "0.4% mean",
       note: "Observed units reconcile to driver decomposition within tolerance.",
     },
+    {
+      name: "Benchmark alignment",
+      status,
+      metric: total ? `${inBand} / ${total} in band` : "no benchmark",
+      note:
+        total === 0
+          ? "No PPG category matched a published elasticity range."
+          : `Per-PPG elasticities scored against Hoch (1995) Dominick's ranges and the Bijmolt (2005) meta grand mean (-2.62).`,
+    },
   ];
-}
-
-function buildForest(recs: Recommendation[]): PPGForestPoint[] {
-  return recs.map((r) => ({
-    ppg_id: r.ppg_id,
-    elasticity: r.elasticity,
-    ci_low: r.elasticity - (1 - r.confidence) * 1.4,
-    ci_high: r.elasticity + (1 - r.confidence) * 1.4,
-  }));
 }
 
 function buildMethodology(): MethodologyStep[] {
@@ -317,7 +361,8 @@ export function buildMockPayload(runId: string | null = null): ClientPayload {
     },
   ];
 
-  const validation = buildValidation();
+  const forest = buildForest(recommendations);
+  const validation = buildValidation(forest);
   const passes = validation.filter((v) => v.status === "pass").length;
   const trust_score = Math.round((passes / validation.length) * 100);
 
@@ -331,7 +376,7 @@ export function buildMockPayload(runId: string | null = null): ClientPayload {
     elasticity_by_ppg: buildElasticityCurves(recommendations),
     validation,
     trust_score,
-    forest: buildForest(recommendations),
+    forest,
     methodology: buildMethodology(),
     narrative:
       "We recommend repricing 6 of 8 Price-Pack Groups: small up-ticks on inelastic premium packs and gentle EDLP cuts on highly elastic multipacks. Every proposed price clears your margin floor and ladder rules. One sits at the competitor-gap ceiling and is flagged for review.",
