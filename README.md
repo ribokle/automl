@@ -20,10 +20,28 @@ metrics):
   (100% SKU agreement vs synthetic truth), PPG selection.
 - **Phase 2** ✅ EDA, feature engineering, VIF + correlation refinement
   (max VIF 7.92, max |corr| 0.91, `log_price` retained).
-- **Phase 2a** ✅ visible run page — every Phase 1/2 agent has at least one
+- **Phase 2a** ✅ visible run page — every agent has at least one
   inline chart; LLM trace artefact per LLM-using agent.
-- **Phase 3+** — modelling, decomposition, optimisation, validation,
-  insights (planned).
+- **Phase 3** ✅ modelling (log-log + semi-log sign-retry + LightGBM,
+  ranked by hold-out WAPE), SHAP attribution, empirical-Bayes hierarchical
+  shrinkage with forest plot.
+- **Phase 4** ✅ closed-form decomposition for OLS winners, ablation-based
+  decomposition for LightGBM, price × promo simulation grid; reconciles to
+  predicted within 1e-6 across all 8 synthetic PPGs.
+- **Phase 5** ✅ scipy continuous warm-start → PuLP MILP under ladder /
+  margin floor / comp gap / move guardrail, soft-relax fallback with
+  binding-violation surface, edit-and-re-solve gate loop, rolling-origin
+  CV validation with sign-stability + WAPE + ε-CV verdicts.
+- **Phase 6** ✅ insights agent with HTML + WeasyPrint PDF report, cost
+  dashboard, executive banner, run-replay scrubber with keyboard shortcuts,
+  cross-run sidebar, fitted-vs-actual + decomposition + simulation +
+  constraint-binding + residual-histogram charts.
+- **Modularity & config refactor** ✅ central `core/config.py`
+  (pydantic-settings) with per-agent `MODEL_<AGENT>` overrides; frontend
+  theme / api-config / chart-config / agent-meta consolidated.
+- **Per-stage FAQ + corner cases** ✅ every agent card carries a
+  collapsible *Common questions & corner cases* disclosure; full reference
+  in `docs/stage-faqs.md`.
 
 See `CLAUDE.md` for contributor conventions.
 
@@ -78,30 +96,42 @@ What you'll see at `/runs/<id>` once the run is going:
 
 - A **vertical step tracker** with all 14 agents — status pill, confidence
   chip, duration, expandable disclosure per step.
-- The first six steps render their own **inline visuals** when expanded:
-  - *Ingestion* — data preview, schema (column / dtype / role / null %),
-    SKU × week coverage heatmap, weekly trend, dbt + GE quality panel
-    (pass / warn / fail pills with rule message + row counts), anomaly
-    list with severity.
-  - *PPG Mapping* — three SKU scatters (Tier × log-price, behaviour-based
-    log-units × elasticity proxy, faceted brand × pack by category) inside
-    an inline tab strip, plus a within-PPG price-box plot and the full
-    PPG → SKU breakdown table.
+- Each agent's card surfaces its **inline visuals** when expanded:
+  - *Ingestion* — data preview, schema, SKU × week coverage heatmap, weekly
+    trend, dbt + GE quality panel (pass / warn / fail pills), anomaly list.
+  - *PPG Mapping* — three SKU scatters (Tier × log-price, behaviour-based,
+    faceted brand × pack by category) inside an inline tab strip, price-box
+    plot, full PPG → SKU breakdown.
   - *PPG Selection* — per-PPG stacked eligibility bars with the 0.60
     threshold line.
-  - *EDA* — weekly trend, pairwise correlation heatmap of numeric
-    candidates, ranked target-relationship table, EDA findings.
-  - *Feature Engineering* — 16-tile histogram grid (one per engineered
-    column) with μ / σ / n.
-  - *Feature Refine* — VIF bar with threshold marker (red ≥ threshold,
-    amber ≥ 70 %, emerald below), refined-set correlation heatmap, drop
-    log with reasons, kept-feature pills.
+  - *EDA* — weekly trend, pairwise correlation heatmap, ranked
+    target-relationship table.
+  - *Feature Engineering* — 16-tile histogram grid (μ / σ / n).
+  - *Feature Refine* — VIF bar, refined-set correlation heatmap, drop log,
+    kept-feature pills.
+  - *Modeling* — candidates table (winner highlighted, attempts expandable),
+    mean-|SHAP| bar, elasticity forest plot (OLS vs EB-shrunk posterior),
+    fitted-vs-actual scatter with log-space `r`.
+  - *Decomposition* — stacked area of base + due-by-group per week with the
+    observed line overlaid, per-PPG selector.
+  - *Simulation* — price-multiplier × promo heatmap toggleable between
+    revenue / margin / units.
+  - *Optimization* — recommendation table with %Δ chips, constraint-binding
+    bar showing per-PPG slacks, inline **constraint editor** that drives
+    the rerun gate loop.
+  - *Validation* — verdict table (pass / warn / fail per PPG), residual
+    histogram of pooled hold-out residuals.
+  - *Insights* — exec headline + KPI tiles + HTML/PDF download buttons,
+    per-PPG recommendations.
+- A *Common questions & corner cases* disclosure per card with the FAQ for
+  that stage (full reference in `docs/stage-faqs.md`).
 - An **Agent thinking** sub-section under every LLM-using agent —
   collapsible per-call panes showing the system prompt, user prompt, and
   raw response, with a *dry-run* badge or live `tokens_in ↓ / tokens_out ↑
   / $cost` row.
-- An **Artifact gallery** at the bottom grouping every JSON / CSV /
-  parquet the run produced, with download links.
+- An **Executive banner** at the top once insights finishes; a **Replay
+  scrubber** above the timeline (Space = play/pause, ←/→ = step); a
+  **Cost dashboard** + **Artifact gallery** at the bottom.
 
 ## CLI
 
@@ -141,6 +171,13 @@ more chart-ready JSONs the frontend renders directly.
 | `eda_report.json`, `eda_corr_matrix.json` | eda | overview / numeric summary / target-relationship / pairwise corr + heatmap-shaped matrix |
 | `features.parquet` (or `.csv`), `feature_engineering.json`, `feature_histograms.json` | feature_engineering | engineered frame + summary + per-column histograms |
 | `feature_refine.json`, `corr_refined.json` | feature_refine | kept / dropped / VIF + refined-set correlation matrix |
+| `modeling_results.json`, `elasticity_per_ppg.json`, `shap_per_ppg.json`, `hierarchical_posterior.json`, `fitted_vs_actual.json` | modeling | per-PPG fits + winner pick + SHAP + EB-shrunk posterior + fitted-vs-actual scatter |
+| `results_reasoning.json`, `model_choice_summary.json` | results_reasoning | per-PPG pass/warn/fail verdict + flat row-shape summary |
+| `decomposition_per_ppg_week.json`, `decomposition_summary.json`, `decomposition_table.json` | decomposition | weekly base + due-by-group + residual; closed-form for OLS, ablation for LightGBM |
+| `simulation_grid.json`, `simulation_summary.json`, `simulation_table.json` | simulation | price × promo sweep + revenue / margin-optimal cells |
+| `optimization_results.json`, `optimization_table.json`, `optimization_constraints.json` | optimization | continuous + MILP solution per PPG, resolved constraints, `chosen_slacks` per cell |
+| `validation_report.json`, `validation_table.json`, `validation_residuals.json` | validation | rolling-origin CV verdict + per-fold detail + pooled hold-out residuals |
+| `insights_summary.json`, `cost_summary.json`, `report.html`, `report.pdf` | insights | exec headline + KPIs + recommendations table, per-agent token/cost rollup, HTML + (WeasyPrint) PDF report |
 | `<agent>_llm_trace.json` | every LLM-using agent | system / user / response / model / tokens / dry-run flag, one per call (disable with `LLM_TRACE=false`) |
 
 ## API
@@ -160,6 +197,7 @@ uv run uvicorn api.main:app --host 0.0.0.0 --port 8000
 | `GET` | `/runs/{id}/events` | SSE stream of orchestrator events |
 | `POST` | `/runs/{id}/approve?agent=<name>` | Release an approval gate |
 | `POST` | `/runs/{id}/reject?agent=<name>` | Reject and halt the run |
+| `POST` | `/runs/{id}/rerun?agent=<name>` | Edit-and-re-solve loop for `RERUNNABLE_AGENTS` (currently `optimization`). JSON body merges into `run.options[agent]` before re-execution. |
 | `POST` | `/uploads` | Upload a CSV (returns a path usable by `/runs`) |
 | `GET` | `/artifacts/{run_id}/{path}` | Read any artefact under `runs/<id>/` |
 
@@ -175,42 +213,93 @@ pnpm build && pnpm start
 
 The UI:
 
-- Lists runs with live status pulled from the API.
+- Lists runs with live status pulled from the API; a collapsible sidebar on
+  `/runs/[id]` links between recent runs without leaving the page.
 - Streams agent events over SSE and renders a vertical step tracker with a
   progress bar, current-step badge, and elapsed-time counter.
+- A **replay scrubber** above the timeline drags through the persisted
+  `events.jsonl` history — every card recomputes its status, summary chips,
+  and duration from the visible event slice. `Space` toggles play/pause,
+  `←` / `→` step one event.
 - Per agent, when the disclosure is open: reasoning, ordered tool calls,
   the *Agent thinking* panel (system / user / response per LLM call), the
-  per-agent inline charts and tables described in **Quickstart**, and a
-  link to every artefact the agent produced.
+  per-agent inline charts and tables described in **Quickstart**, a link
+  to every artefact the agent produced, and a *Common questions & corner
+  cases* disclosure with the FAQ for that stage (full reference in
+  `docs/stage-faqs.md`).
+- An **executive banner** at the top of the run page renders headline +
+  KPIs + HTML/PDF report download buttons once the insights agent finishes.
 - Approve / reject controls release the active approval gate without
-  leaving the run page.
-- An artifact gallery at the bottom of the page indexes every JSON / CSV /
-  parquet produced by the run.
+  leaving the run page; the optimisation gate also supports an
+  **edit-and-re-solve** loop via the inline constraint editor (ladder /
+  margin floor / comp gap / max move) that calls `POST /runs/{id}/rerun`
+  and re-arms the gate.
+- A **cost dashboard** and **artifact gallery** at the bottom of the page
+  index per-agent tokens/$ and every JSON / CSV / parquet produced.
 
 Throwaway design-record pages live under `web/app/dev/` (`/dev/inline`,
 `/dev/tabs`, `/dev/subroutes/*`) — these are the layout mockups that
 informed the inline-visuals choice; they're not part of the production
 flow.
 
-Set `NEXT_PUBLIC_API_BASE` if the backend isn't on `http://localhost:8000`:
+If the API server isn't on `http://localhost:8000`, point the Next.js proxy
+at it via `API_PROXY_TARGET` at next-server **runtime** (no rebuild required):
 
 ```bash
-NEXT_PUBLIC_API_BASE=https://api.example.com pnpm build
+API_PROXY_TARGET=https://api.example.com API_AUTH_TOKEN=$TOKEN pnpm start
 ```
+
+The browser bundle never carries a hostname — same-origin `/api/*` requests
+are forwarded by `web/app/api/[...path]/route.ts`, which also injects
+`Authorization: Bearer $API_AUTH_TOKEN` when the API has auth turned on.
 
 ## Configuration
 
 The pipeline runs without any environment variables in dry-run mode (LLM
 calls fall back to deterministic stubs that produce the same JSON shape).
-For real LLM narratives:
+All runtime config is centralised in `core/config.py` (pydantic-settings)
+and accessed via the cached `get_settings()` singleton — don't add ad-hoc
+`os.environ.get` calls; add a field to `Settings` instead. `.env` at the
+repo root is auto-loaded.
+
+**LLM provider + tracing**
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | _(unset)_ | When unset, every agent uses its dry-run fallback. Set it to enable real Claude calls. |
-| `ANTHROPIC_MODEL` | per-agent default in `core/llm/routing.py` | Override the model used by every agent (Opus / Sonnet / Haiku). |
-| `LLM_TRACE` | `true` | Set to `false` to suppress the per-agent `<agent>_llm_trace.json` audit artefact. Dry-run runs still capture a trace with `dry_run: true` by default — disable here when the prompts may carry sensitive row samples and the run dir will be shared. |
-| `LLM_DRY_RUN` | _(unset)_ | Force every LLM call into the deterministic fallback even when `ANTHROPIC_API_KEY` is set. Useful for cheap CI runs. |
-| `NEXT_PUBLIC_API_BASE` | `http://localhost:8000` | Frontend → backend base URL. Inlined at **build time** for the Next.js bundle. |
+| `ANTHROPIC_API_KEY` | _(unset)_ | When unset, every agent uses its dry-run fallback. Set to enable real Claude API calls. |
+| `ANTHROPIC_AUTH_TOKEN` | _(unset)_ | OAuth token from `claude setup-token`; alternative to API key. |
+| `LLM_PROVIDER` | _(auto)_ | Force a provider: `dry_run` / `api` / `oauth` / `cli`. Auto-detected from credentials by default; `cli` is never picked implicitly. |
+| `LLM_DRY_RUN` | `false` | Force every LLM call into the deterministic fallback even when credentials are set. Useful for cheap CI runs. |
+| `LLM_TRACE` | `true` | Per-agent `<agent>_llm_trace.json` audit artefact. Set `false` to suppress (e.g. when prompts may carry sensitive row samples and the run dir will be shared). |
+| `LLM_CLI_TIMEOUT_SECONDS` | `180` | Timeout for the `cli` provider shelling out to the local `claude` binary. |
+
+**Model routing**
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `ANTHROPIC_MODEL_OPUS` | `claude-opus-4-7` | Model used for Opus-tier agents (see `OPUS_AGENTS` in `core/llm/routing.py`). |
+| `ANTHROPIC_MODEL_SONNET` | `claude-sonnet-4-6` | Model used for all other (Sonnet-tier) agents. |
+| `MODEL_<AGENT>` | _(unset)_ | Per-agent override, wins over the role default. `<AGENT>` matches the agent's `name` uppercased (e.g. `MODEL_PPG_MAPPING=claude-sonnet-4-6`, `MODEL_OPTIMIZATION=claude-opus-4-7`). |
+
+**API server**
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `ALLOWED_ORIGINS` | `http://localhost:3000` | Comma-separated CORS origins. Methods scoped to GET/POST/OPTIONS, headers to `Content-Type` + `Authorization`. |
+| `API_AUTH_TOKEN` | _(unset)_ | When set, every route except `/health` requires `Authorization: Bearer <token>`. Unset = open (dev default). Server-side only — never prefix with `NEXT_PUBLIC_` or it lands in the browser bundle. |
+| `MAX_UPLOAD_MB` | `200` | Hard cap on `/uploads` payload size. The endpoint also restricts to `.csv` and sanitizes filenames. |
+| `RUN_DIR` | `./runs` | Where per-run artefacts (state, events, DuckDB warehouse, JSONs) are written and served from. |
+| `BASELINE_DIR` | `core/data/baselines` | Where the GE drift suite reads its baseline snapshot from (write with `automl baseline-create`). |
+| `DRIFT_SLACK_PCT` | `0.4` | ±40% slack on numeric-column drift checks. |
+| `VALIDATION__SIGN_PASS`, `VALIDATION__WAPE_PASS`, …| see `core/config.py` | Per-PPG validation cutoffs. Nested env keys: `VALIDATION__<FIELD>`. |
+
+**Next.js frontend**
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `API_PROXY_TARGET` | `http://localhost:8000` | Server-side: where `web/app/api/[...path]/route.ts` forwards browser requests. Set at next-server **runtime** (not build time). |
+| `API_AUTH_TOKEN` | _(unset)_ | Same token the API enforces; the Next.js proxy injects it as `Authorization: Bearer …` on every forwarded request. Server-only; never `NEXT_PUBLIC_*`. |
+| `NEXT_PUBLIC_API_BASE` | `http://localhost:8000` | Legacy SSR fallback; only the SSR caller in `app/runs/page.tsx` reads it. Browser-side fetches go through same-origin `/api/*`. |
 
 ## Tests
 
@@ -219,24 +308,41 @@ pull it in on the fly with `uv`:
 
 ```bash
 uv run --with pytest pytest tests/ -q
-# 22 passed
+# 151 collected
 ```
 
-The suite covers:
+Highlights of the suite (`tests/unit/`):
 
+- **Config + settings** (`test_config.py`) — defaults match the pre-refactor
+  literals; `MODEL_<AGENT>` overrides flip per-agent routing;
+  `ALLOWED_ORIGINS` parses CSV; `BASELINE_DIR` propagates to ingestion.
 - **PPG clustering** (`test_ppg_clustering.py`) — synthetic panel through
   dbt + the clusterer; asserts ≥ 95 % SKU agreement vs `synthetic/truth.json`
   (currently 100 %, 48 / 48).
-- **Feature refine** (`test_feature_refine.py`) — end-to-end VIF +
-  correlation pruning; asserts `max VIF < 10`, `max |corr| ≤ 0.95`,
+- **Modeling stack** (`test_modeling.py`, `test_lightgbm_model.py`,
+  `test_shap_attribution.py`, `test_bayes_hier.py`, `test_predictor.py`) —
+  log-log + semi-log sign-retry + LightGBM selection, SHAP per-row identity,
+  empirical-Bayes shrinkage bracketed by point & μ̂, shared `Predictor`
+  abstraction.
+- **Decomposition + simulation** (`test_decomposition.py`,
+  `test_ablation_decomp.py`, `test_simulation.py`,
+  `test_lightgbm_grid_and_milp.py`) — closed-form + ablation paths
+  reconcile to predicted within 1e-6; simulator unit curves monotone in
+  price.
+- **Optimization + validation** (`test_optimization.py`,
+  `test_validation.py`, `test_gate_rerun.py`) — MILP feasibility, soft-relax,
+  `chosen_slacks`, rolling-origin CV verdicts, rerun gate loop.
+- **Insights + report** (`test_insights.py`) — HTML/PDF render, cost rollup,
+  dry-run fallback.
+- **Feature refine** (`test_feature_refine.py`) — VIF < 10, |corr| ≤ 0.95,
   `log_price` retained.
-- **Chart-data builders** (`test_charts.py`) — every builder in
-  `core/data/charts.py` against a dbt-built synthetic warehouse + the
-  graceful-degradation case where `brand` / `category` / `pack_size` are
-  absent.
-- **LLM trace** (`test_llm_trace.py`) — base `Agent.call_llm` captures
-  system / user / response into `<agent>_llm_trace.json`; `LLM_TRACE=false`
-  cleanly suppresses; failures-after-LLM still flush before re-raising.
+- **Chart-data builders** (`test_charts.py`, `test_graceful_degradation.py`)
+  — every builder against a synthetic warehouse + missing-column placeholder
+  artefacts.
+- **LLM trace** (`test_llm_trace.py`) — captures system / user / response;
+  `LLM_TRACE=false` cleanly suppresses; failures-after-LLM still flush.
+- **API route + artifacts** (`test_artifacts_route.py`, …) — path-traversal
+  block uses `pathlib.is_relative_to` so it works on Linux + Windows.
 - **Gitignore guard** (`test_gitignore_sources.py`) — fails fast if any
   source path under `core/`, `api/`, `cli/`, `synthetic/`, `tests/`,
   `web/app/`, `web/components/`, `web/lib/` is silently matched by a
@@ -245,33 +351,60 @@ The suite covers:
 ## Repository layout
 
 ```
-api/                   FastAPI app + routes (runs, events, uploads, artefacts, approvals)
+api/                   FastAPI app + routes (runs, events, uploads, artefacts, approvals, rerun)
 cli/                   Typer CLI (`automl run|seed|baseline-create`)
 core/
   agents/              One file per agent; all inherit core.agents.base.Agent
+  config.py            Central pydantic-settings Settings + get_settings() singleton
   data/                Ingestion, dbt runner, GE runner, profiling tools,
                        chart-ready data builders (charts.py), ingestion report
+  decomp/              Closed-form (due_to.py) + ablation decomposition + group mapping
   features/            EDA tools, engineering pipeline, VIF + correlation refine
-  llm/                 AnthropicClient + per-agent model routing + LLM trace
-  orchestrator/        RunState, EventBus, gates, async runner
+  llm/                 AnthropicClient + per-agent model routing + LLM trace + cost
+  models/              ElasticityFit base, log-log / semi-log / LightGBM, SHAP,
+                       empirical-Bayes shrinkage, shared Predictor abstraction
+  optimization/        Constraints, predict helpers, scipy continuous, PuLP MILP
+  orchestrator/        RunState, EventBus, gates (incl. rerun loop), async runner
   ppg/                 Per-SKU features, clustering, scoring
+  report/              Jinja HTML template + WeasyPrint PDF renderer
+  simulation/          Price × promo grid sweeps (OLS + Predictor)
+  validation/          Rolling-origin CV + pass/warn/fail check rules
 dbt/automl_dbt/        dbt project (DuckDB profile, staging + panel mart, tests)
+docs/                  Long-form references (stage-faqs.md, architecture.png)
 synthetic/             Synthetic data generator + ground-truth JSON
-tests/unit/            pytest suites (PPG, feature refine, charts, LLM trace, ...)
+tests/unit/            pytest suites (151 collected)
 web/
   app/                 Next.js routes (`/`, `/runs`, `/runs/[id]`, `/dev/*` mockups)
+                       Server-side proxy at `app/api/[...path]/route.ts`
   components/
-    charts/            ECharts wrappers (CoverageHeatmap, TrendChart,
-                       PPGScatter, PPGPriceBox, EligibilityBars,
-                       CorrHeatmap, VIFBar, FeatureHistograms)
+    charts/            ECharts wrappers (CoverageHeatmap, TrendChart, PPGScatter,
+                       PPGPriceBox, EligibilityBars, CorrHeatmap, VIFBar,
+                       FeatureHistograms, SHAPBar, ElasticityForest,
+                       FittedVsActual, DecompStackedArea, SimulationHeatmap,
+                       ConstraintBinding, ResidualHistogram)
     tables/            DataPreview, SchemaTable, QualityPanel, AnomalyTable,
-                       DropLog, TargetRelationship
-    AgentCard.tsx      Per-agent disclosure tile
+                       DropLog, TargetRelationship, CandidatesTable,
+                       RecommendationTable, ValidationTable, InsightsSummary,
+                       ResultsTable (shared sortable/expandable base)
+    AgentCard.tsx      Per-agent disclosure tile (mounts AgentFAQ)
+    AgentFAQ.tsx       Common-questions + corner-cases disclosure (per stage)
     AgentVisuals.tsx   Per-agent inline chart container
     AgentThinking.tsx  Collapsible LLM-trace panel (system / user / response)
+    ConstraintEditor.tsx  Inline editor that drives the rerun gate loop
+    CostDashboard.tsx  Per-agent token/cost rollup
+    ExecutiveBanner.tsx Top-of-run KPIs + HTML/PDF download
+    ReplayBar.tsx      Run-replay scrubber with keyboard shortcuts
+    RunSidebar.tsx     Cross-run sidebar
     PPGTabs.tsx        Inline tab strip used inside the PPG mapping card
-    PPGTable.tsx       PPG → SKU breakdown with approve / reject controls
-  lib/                 API client, SSE hooks, types, agent metadata
+    PPGTable.tsx       PPG → SKU breakdown
+  lib/
+    agent-faqs.ts      Per-stage FAQ data (single source of truth for AgentFAQ)
+    agent-meta.ts      Per-agent metadata + capability sets + summarisers
+    api-config.ts      getApiBase() + getAuthHeaders() (browser vs SSR)
+    api.ts             Fetch wrappers built on api-config
+    chart-config.ts    Shared ECharts defaults (height, grid, fonts, colours)
+    theme.ts           STATUS_STYLE / STATUS_DOT / PHASE_COLOR token map
+    types.ts           AGENT_ORDER + RunEvent / AgentState / PPG types
 runs/                  Per-run artefacts (created at runtime; gitignored)
 ```
 
@@ -306,8 +439,12 @@ Operational notes:
   with `proxy_buffering off` for `/runs/*/events`).
 - Set `ANTHROPIC_API_KEY` as a secret to enable real LLM calls. Without
   it, the pipeline still runs end-to-end on deterministic fallbacks.
-- CORS is currently open (`allow_origins=["*"]`) — lock this down in
-  `api/main.py` before exposing publicly.
+- CORS is scoped to `ALLOWED_ORIGINS` (default `http://localhost:3000`) with
+  methods limited to GET/POST/OPTIONS — set the env to your front-end's
+  public origin in production.
+- Set `API_AUTH_TOKEN` to require `Authorization: Bearer <token>` on every
+  route except `/health`. Same token goes to the Next.js process so its
+  proxy injects it automatically.
 
 ### Frontend (Next.js)
 
@@ -321,19 +458,22 @@ FROM node:20-alpine AS build
 WORKDIR /app
 COPY web/ ./
 COPY --from=deps /app/node_modules ./node_modules
-ARG NEXT_PUBLIC_API_BASE
-ENV NEXT_PUBLIC_API_BASE=$NEXT_PUBLIC_API_BASE
 RUN corepack enable && pnpm build
 
 FROM node:20-alpine
 WORKDIR /app
 COPY --from=build /app ./
 EXPOSE 3000
+# API_PROXY_TARGET + API_AUTH_TOKEN are read at next-server startup, not
+# bake time — set them via env at deploy / docker run.
 CMD ["node_modules/.bin/next", "start", "-p", "3000"]
 ```
 
-Pass `NEXT_PUBLIC_API_BASE` at **build time** (it's inlined into the static
-bundle), not at runtime.
+`API_PROXY_TARGET` and `API_AUTH_TOKEN` are read at **runtime** by the
+Next.js server (no rebuild needed to point at a new backend or rotate the
+token). The client bundle never carries either value — browser fetches go
+through same-origin `/api/*` and the proxy injects the bearer token
+server-side.
 
 ### docker-compose sketch
 
@@ -344,6 +484,8 @@ services:
     ports: ["8000:8000"]
     environment:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ALLOWED_ORIGINS: http://localhost:3000
+      API_AUTH_TOKEN: ${API_AUTH_TOKEN:-}
     volumes:
       - ./runs:/app/runs
       - ./data:/app/data
@@ -351,8 +493,9 @@ services:
     build:
       context: .
       dockerfile: web/Dockerfile
-      args:
-        NEXT_PUBLIC_API_BASE: http://localhost:8000
+    environment:
+      API_PROXY_TARGET: http://api:8000
+      API_AUTH_TOKEN: ${API_AUTH_TOKEN:-}
     ports: ["3000:3000"]
     depends_on: [api]
 ```
