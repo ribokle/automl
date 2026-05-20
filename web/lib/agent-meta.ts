@@ -1,105 +1,115 @@
-import type { AgentName, AgentStatus, RunEvent } from "./types";
+import { STATUS_STYLE } from "./theme";
+import type { AgentName, RunEvent } from "./types";
 
-export const AGENT_META: Record<AgentName, { title: string; description: string }> = {
+export { STATUS_STYLE };
+
+interface AgentMetaEntry {
+  title: string;
+  description: string;
+  hasVisuals: boolean;
+  hasLLM: boolean;
+}
+
+export const AGENT_META: Record<AgentName, AgentMetaEntry> = {
   ingestion: {
     title: "Ingestion",
     description:
       "Load the CSV into DuckDB, build the dbt panel mart, run schema + distribution checks, profile each column.",
+    hasVisuals: true,
+    hasLLM: true,
   },
   ppg_mapping: {
     title: "PPG Mapping",
     description:
       "Group SKUs into Price-Pack Groups by brand, category and price tier. Score each mapping by within-group price coherence.",
+    hasVisuals: true,
+    hasLLM: true,
   },
   ppg_selection: {
     title: "PPG Selection",
     description:
       "Score each PPG on size, coverage, price variation and promo activity. Flag the ones eligible for modelling.",
+    hasVisuals: true,
+    hasLLM: true,
   },
   feature_selection: {
     title: "Feature Selection",
     description: "Pick the candidate covariates for elasticity modelling.",
+    hasVisuals: false,
+    hasLLM: true,
   },
   eda: {
     title: "EDA",
     description: "Summarise distributions and pairwise relationships at the PPG × week level.",
+    hasVisuals: true,
+    hasLLM: true,
   },
   feature_engineering: {
     title: "Feature Engineering",
     description: "Build lagged, holiday and competitive-price features.",
+    hasVisuals: true,
+    hasLLM: true,
   },
   feature_refine: {
     title: "Feature Refine",
     description: "Drop collinear features (VIF, |corr| pruning).",
+    hasVisuals: true,
+    hasLLM: true,
   },
   modeling: {
     title: "Modeling",
     description: "Fit per-PPG log-log price-elasticity models.",
+    hasVisuals: true,
+    hasLLM: true,
   },
   results_reasoning: {
     title: "Results Reasoning",
     description: "Narrate elasticity estimates, fit quality and which PPGs to trust.",
+    hasVisuals: false,
+    hasLLM: false,
   },
   decomposition: {
     title: "Decomposition",
     description: "Decompose observed units into base / price / promo / seasonality drivers.",
+    hasVisuals: true,
+    hasLLM: false,
   },
   simulation: {
     title: "Simulation",
     description: "Replay counterfactual price / promo scenarios through the fitted model.",
+    hasVisuals: true,
+    hasLLM: false,
   },
   optimization: {
     title: "Optimization",
     description:
       "Solve for prices that maximise margin under ladder, margin-floor and competitor-gap constraints.",
+    hasVisuals: true,
+    hasLLM: true,
   },
   validation: {
     title: "Validation",
     description: "Hold-out WAPE, residual diagnostics, sanity bounds on recommended moves.",
+    hasVisuals: true,
+    hasLLM: true,
   },
   insights: {
     title: "Insights",
     description: "Render the executive HTML / PDF report and the cost dashboard.",
+    hasVisuals: true,
+    hasLLM: true,
   },
 };
 
-export const STATUS_STYLE: Record<AgentStatus | "idle", { dot: string; pill: string; ring: string }> = {
-  idle: {
-    dot: "bg-slate-700",
-    pill: "bg-slate-800 text-slate-400 border-slate-700",
-    ring: "ring-slate-800",
-  },
-  pending: {
-    dot: "bg-slate-700",
-    pill: "bg-slate-800 text-slate-400 border-slate-700",
-    ring: "ring-slate-800",
-  },
-  running: {
-    dot: "bg-amber-400 animate-pulse",
-    pill: "bg-amber-500/15 text-amber-300 border-amber-500/40",
-    ring: "ring-amber-500/40",
-  },
-  awaiting_approval: {
-    dot: "bg-purple-400 animate-pulse",
-    pill: "bg-purple-500/15 text-purple-300 border-purple-500/40",
-    ring: "ring-purple-500/40",
-  },
-  done: {
-    dot: "bg-emerald-400",
-    pill: "bg-emerald-500/15 text-emerald-300 border-emerald-500/40",
-    ring: "ring-emerald-500/30",
-  },
-  failed: {
-    dot: "bg-rose-500",
-    pill: "bg-rose-500/15 text-rose-300 border-rose-500/40",
-    ring: "ring-rose-500/40",
-  },
-  skipped: {
-    dot: "bg-slate-600",
-    pill: "bg-slate-800/60 text-slate-500 border-slate-700",
-    ring: "ring-slate-800",
-  },
-};
+const _entries = Object.entries(AGENT_META) as [AgentName, AgentMetaEntry][];
+export const VISUALS_AGENTS: ReadonlySet<AgentName> = new Set(
+  _entries.filter(([, m]) => m.hasVisuals).map(([k]) => k),
+);
+export const LLM_AGENTS: ReadonlySet<AgentName> = new Set(
+  _entries.filter(([, m]) => m.hasLLM).map(([k]) => k),
+);
+
+export const formatDisplayName = (s: string): string => s.replace(/_/g, " ");
 
 function formatNumber(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;

@@ -11,14 +11,18 @@ The token is read on every call rather than cached so test fixtures (and
 from __future__ import annotations
 
 import hmac
-import os
 
 from fastapi import Header, HTTPException, status
 
+from core.config import get_settings
+
 
 def _expected_token() -> str | None:
-    token = os.environ.get("API_AUTH_TOKEN")
-    return token.strip() if token else None
+    secret = get_settings().api_auth_token
+    if not secret:
+        return None
+    token = secret.get_secret_value().strip()
+    return token or None
 
 
 async def require_auth(authorization: str | None = Header(default=None)) -> None:

@@ -24,15 +24,7 @@ import math
 from dataclasses import dataclass, field
 from statistics import mean, stdev
 
-
-SIGN_PASS = 0.75
-SIGN_WARN = 0.50
-WAPE_PASS = 0.20
-WAPE_WARN = 0.30
-CV_PASS = 0.4
-CV_WARN = 0.7
-ELASTICITY_LOW = 0.3
-ELASTICITY_HIGH = 6.0
+from core.config import get_settings
 
 
 @dataclass
@@ -65,6 +57,7 @@ def evaluate_ppg(
     because a wrong-sign retry could have flipped the model family
     mid-fold.
     """
+    _t = get_settings().validation
     if not folds:
         return Verdict(
             ppg_id=ppg_id,
@@ -95,9 +88,9 @@ def evaluate_ppg(
     checks: list[dict] = []
     verdict = "pass"
 
-    if sign_stability >= SIGN_PASS:
+    if sign_stability >= _t.sign_pass:
         checks.append({"name": "sign_stability", "status": "pass", "detail": f"{sign_stability:.0%}"})
-    elif sign_stability >= SIGN_WARN:
+    elif sign_stability >= _t.sign_warn:
         checks.append({"name": "sign_stability", "status": "warn", "detail": f"{sign_stability:.0%}"})
         verdict = _worst(verdict, "warn")
     else:
@@ -106,9 +99,9 @@ def evaluate_ppg(
 
     if math.isnan(w_mean):
         checks.append({"name": "wape_mean", "status": "info", "detail": "no hold-out WAPE recorded"})
-    elif w_mean <= WAPE_PASS:
+    elif w_mean <= _t.wape_pass:
         checks.append({"name": "wape_mean", "status": "pass", "detail": f"{w_mean:.3f}"})
-    elif w_mean <= WAPE_WARN:
+    elif w_mean <= _t.wape_warn:
         checks.append({"name": "wape_mean", "status": "warn", "detail": f"{w_mean:.3f}"})
         verdict = _worst(verdict, "warn")
     else:
@@ -116,9 +109,9 @@ def evaluate_ppg(
         verdict = _worst(verdict, "fail")
 
     if len(folds) >= 2:
-        if e_cv <= CV_PASS:
+        if e_cv <= _t.cv_pass:
             checks.append({"name": "elasticity_cv", "status": "pass", "detail": f"CV={e_cv:.2f}"})
-        elif e_cv <= CV_WARN:
+        elif e_cv <= _t.cv_warn:
             checks.append({"name": "elasticity_cv", "status": "warn", "detail": f"CV={e_cv:.2f}"})
             verdict = _worst(verdict, "warn")
         else:
@@ -126,14 +119,14 @@ def evaluate_ppg(
             verdict = _worst(verdict, "fail")
 
     abs_e_mean = abs(e_mean)
-    if ELASTICITY_LOW <= abs_e_mean <= ELASTICITY_HIGH:
+    if _t.elasticity_low <= abs_e_mean <= _t.elasticity_high:
         checks.append({"name": "magnitude_band", "status": "pass", "detail": f"|ε|={abs_e_mean:.2f}"})
     else:
         checks.append(
             {
                 "name": "magnitude_band",
                 "status": "warn",
-                "detail": f"|ε|={abs_e_mean:.2f} outside [{ELASTICITY_LOW},{ELASTICITY_HIGH}]",
+                "detail": f"|ε|={abs_e_mean:.2f} outside [{_t.elasticity_low},{_t.elasticity_high}]",
             }
         )
         verdict = _worst(verdict, "warn")

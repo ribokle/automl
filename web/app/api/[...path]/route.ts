@@ -8,13 +8,12 @@
 
 import { NextRequest } from "next/server";
 
+import { SERVER_UPSTREAM } from "@/lib/api-config";
+
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-const UPSTREAM =
-  process.env.API_PROXY_TARGET ||
-  process.env.NEXT_PUBLIC_API_BASE ||
-  "http://localhost:8000";
+const UPSTREAM = SERVER_UPSTREAM;
 
 const HOP_BY_HOP = new Set([
   "connection",

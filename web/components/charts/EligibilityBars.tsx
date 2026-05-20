@@ -1,5 +1,6 @@
 "use client";
 
+import { formatDisplayName } from "@/lib/agent-meta";
 import { EChart } from "./EChart";
 
 export interface EligibilityData {
@@ -34,7 +35,7 @@ export function EligibilityBars({ data }: { data: EligibilityData | { missing_co
   }
   const categories = data.bars.map((b) => b.ppg_id);
   const series = (Object.keys(METRIC_COLOURS) as (keyof typeof METRIC_COLOURS)[]).map((k) => ({
-    name: k.replace("_", " "),
+    name: formatDisplayName(k),
     type: "bar",
     stack: "score",
     data: data.bars.map((b) => b.contributions[k]),

@@ -30,13 +30,13 @@ a side-effect that must be explicit (set ``LLM_PROVIDER=cli`` or pass
 from __future__ import annotations
 
 import json
-import os
 import shutil
 import subprocess
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
+from core.config import get_settings
 from core.llm.cost import estimate_usd
 
 
@@ -58,23 +58,20 @@ class LLMResponse:
     provider: str = LLMProvider.DRY_RUN.value
 
 
-def _truthy(val: str | None) -> bool:
-    return (val or "").strip().lower() in ("1", "true", "yes", "on")
-
-
 def detect_provider() -> LLMProvider:
-    explicit = os.environ.get("LLM_PROVIDER", "").strip().lower()
+    s = get_settings()
+    explicit = (s.llm_provider or "").strip().lower()
     if explicit:
         try:
             return LLMProvider(explicit)
         except ValueError as exc:
             valid = ", ".join(p.value for p in LLMProvider)
             raise ValueError(f"LLM_PROVIDER={explicit!r} invalid; expected one of {valid}") from exc
-    if _truthy(os.environ.get("LLM_DRY_RUN")):
+    if s.llm_dry_run:
         return LLMProvider.DRY_RUN
-    if os.environ.get("ANTHROPIC_API_KEY"):
+    if s.anthropic_api_key:
         return LLMProvider.API
-    if os.environ.get("ANTHROPIC_AUTH_TOKEN"):
+    if s.anthropic_auth_token:
         return LLMProvider.OAUTH
     return LLMProvider.DRY_RUN
 
@@ -88,8 +85,9 @@ class AnthropicClient:
         auth_token: str | None = None,
         dry_run: bool | None = None,
         cli_path: str | None = None,
-        cli_timeout_s: int = 180,
+        cli_timeout_s: int | None = None,
     ) -> None:
+        s = get_settings()
         if dry_run is True:
             provider = LLMProvider.DRY_RUN
         elif provider is None:
@@ -97,10 +95,12 @@ class AnthropicClient:
         elif isinstance(provider, str):
             provider = LLMProvider(provider)
         self.provider: LLMProvider = provider
-        self.api_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
-        self.auth_token = auth_token or os.environ.get("ANTHROPIC_AUTH_TOKEN")
+        api_secret = s.anthropic_api_key.get_secret_value() if s.anthropic_api_key else None
+        auth_secret = s.anthropic_auth_token.get_secret_value() if s.anthropic_auth_token else None
+        self.api_key = api_key or api_secret
+        self.auth_token = auth_token or auth_secret
         self.cli_path = cli_path or shutil.which("claude") or "claude"
-        self.cli_timeout_s = cli_timeout_s
+        self.cli_timeout_s = cli_timeout_s if cli_timeout_s is not None else s.llm_cli_timeout_seconds
         self._client: Any = None
 
     @property

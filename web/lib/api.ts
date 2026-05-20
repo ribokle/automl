@@ -1,17 +1,8 @@
+import { getApiBase, getAuthHeaders } from "./api-config";
 import type { PPGRow, PPGSelectionRow, RunStateFull, RunSummary } from "./types";
 
-const isServer = typeof window === "undefined";
-const SERVER_API_BASE =
-  process.env.API_PROXY_TARGET ||
-  process.env.NEXT_PUBLIC_API_BASE ||
-  "http://localhost:8000";
-const API_BASE = isServer ? SERVER_API_BASE : "/api";
-
-function authHeaders(): Record<string, string> {
-  if (!isServer) return {};
-  const token = process.env.API_AUTH_TOKEN;
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
+const API_BASE = getApiBase();
+const authHeaders = getAuthHeaders;
 
 export async function createRun(dataPath: string, gatesEnabled = false): Promise<RunSummary> {
   const res = await fetch(`${API_BASE}/runs`, {

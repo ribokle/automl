@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import logging
-import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -11,14 +10,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from api.deps import get_run_dir
 from api.routes import approvals, artifacts, events, runs, uploads
+from core.config import get_settings
 
 log = logging.getLogger("api.main")
-
-
-def _allowed_origins() -> list[str]:
-    raw = os.environ.get("ALLOWED_ORIGINS", "http://localhost:3000")
-    origins = [o.strip() for o in raw.split(",") if o.strip()]
-    return origins or ["http://localhost:3000"]
 
 
 @asynccontextmanager
@@ -40,7 +34,7 @@ def create_app() -> FastAPI:
     )
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=_allowed_origins(),
+        allow_origins=get_settings().allowed_origins,
         allow_methods=["GET", "POST", "OPTIONS"],
         allow_headers=["Authorization", "Content-Type"],
         allow_credentials=False,

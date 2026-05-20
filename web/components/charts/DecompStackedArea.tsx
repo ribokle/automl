@@ -1,6 +1,8 @@
 "use client";
 
 import { memo } from "react";
+
+import { CHART_DEFAULTS } from "@/lib/chart-config";
 import { EChart } from "./EChart";
 
 export interface DecompWeekRow {
@@ -44,7 +46,10 @@ interface Props {
   height?: number;
 }
 
-export const DecompStackedArea = memo(function DecompStackedArea({ data, height = 280 }: Props) {
+export const DecompStackedArea = memo(function DecompStackedArea({
+  data,
+  height = CHART_DEFAULTS.height,
+}: Props) {
   const weekly = data.weekly ?? [];
   if (!weekly.length) {
     return <p className="text-[11px] text-slate-500">No decomposition data.</p>;

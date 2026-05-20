@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { fmtClock } from "@/lib/agent-meta";
+import { fmtClock, formatDisplayName } from "@/lib/agent-meta";
+import { PHASE_COLOR } from "@/lib/theme";
 import type { AgentName, RunEvent } from "@/lib/types";
 
 interface Props {
@@ -11,18 +12,6 @@ interface Props {
   scrubTs: string | null;
   onScrub: (ts: string | null) => void;
 }
-
-const PHASE_COLOR: Record<string, string> = {
-  agent_started: "bg-amber-400",
-  agent_finished: "bg-emerald-400",
-  agent_failed: "bg-rose-500",
-  approval_required: "bg-purple-400",
-  approval_resolved: "bg-emerald-500",
-  agent_rerunning: "bg-amber-500",
-  tool_called: "bg-slate-500",
-  run_started: "bg-sky-400",
-  run_finished: "bg-emerald-500",
-};
 
 function fmtElapsed(ms: number): string {
   const s = Math.max(0, Math.round(ms / 1000));
@@ -152,7 +141,7 @@ export function ReplayBar({ events, scrubTs, onScrub }: Props) {
           )}
           {focusAgent && (
             <span className="font-mono text-[11px] text-slate-300">
-              {focusAgent} · {focusEv?.replace(/_/g, " ")}
+              {focusAgent} · {focusEv ? formatDisplayName(focusEv) : ""}
             </span>
           )}
         </div>

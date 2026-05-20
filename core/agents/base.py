@@ -7,11 +7,11 @@ and delegates the real work to `_execute`.
 from __future__ import annotations
 
 import json
-import os
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from core.config import get_settings
 from core.llm.client import AnthropicClient, LLMResponse
 from core.llm.routing import model_for
 from core.orchestrator.events import bus
@@ -19,7 +19,7 @@ from core.orchestrator.state import AgentResult, AgentStatus, ArtifactRef, RunSt
 
 
 def _trace_enabled() -> bool:
-    return os.environ.get("LLM_TRACE", "true").lower() not in ("0", "false", "no", "off")
+    return get_settings().llm_trace
 
 
 class Agent:

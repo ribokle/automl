@@ -17,14 +17,14 @@ from datetime import datetime
 from pathlib import Path
 
 from core.agents.base import Agent
+from core.config import get_settings
 from core.data.charts import coverage_grid, quality_results, weekly_trend
 from core.data.dbt_runner import run_dbt_build
 from core.data.ge_runner import run_ge_checks
-from core.data.io import load_csv_to_duckdb
 from core.data.ingestion_report import IngestionReport
+from core.data.io import load_csv_to_duckdb
 from core.data.tools import detect_outliers, profile_table, sample_rows
 from core.orchestrator.state import AgentResult, AgentStatus, ArtifactRef, RunState
-
 
 SYSTEM_PROMPT = """You are the data-ingestion analyst for an automated CPG price/promo platform.
 You receive: (1) an IngestionReport summarising dbt + Great Expectations results,
@@ -92,7 +92,7 @@ class IngestionAgent(Agent):
         await self.emit(run, "tool_called", {"tool": "dbt_build", "checks": len(dbt_results)})
 
         try:
-            _baseline = Path("core/data/baselines/synthetic.json")
+            _baseline = get_settings().baseline_dir / "synthetic.json"
             _baseline_path = _baseline if _baseline.exists() else None
             ge_results = await asyncio.to_thread(run_ge_checks, duckdb_path, "panel", _baseline_path)
             await self.emit(run, "tool_called", {"tool": "ge_checks", "checks": len(ge_results)})

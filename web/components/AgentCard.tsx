@@ -3,7 +3,9 @@
 import { useState } from "react";
 import {
   AGENT_META,
+  LLM_AGENTS,
   STATUS_STYLE,
+  VISUALS_AGENTS,
   formatDuration,
   summariseOutputs,
   summariseTool,
@@ -12,35 +14,6 @@ import { approveAgent, artifactUrl, rejectAgent } from "@/lib/api";
 import type { AgentName, AgentState, AgentStatus, RunEvent } from "@/lib/types";
 import { AgentThinking } from "./AgentThinking";
 import { AgentVisuals } from "./AgentVisuals";
-
-const VISUALS_AGENTS: ReadonlySet<AgentName> = new Set([
-  "ingestion",
-  "ppg_mapping",
-  "ppg_selection",
-  "eda",
-  "feature_engineering",
-  "feature_refine",
-  "modeling",
-  "decomposition",
-  "simulation",
-  "optimization",
-  "validation",
-  "insights",
-] as const);
-
-const LLM_AGENTS: ReadonlySet<AgentName> = new Set([
-  "ingestion",
-  "ppg_mapping",
-  "ppg_selection",
-  "feature_selection",
-  "eda",
-  "feature_engineering",
-  "feature_refine",
-  "modeling",
-  "optimization",
-  "validation",
-  "insights",
-] as const);
 
 interface Props {
   runId: string;

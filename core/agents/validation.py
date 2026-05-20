@@ -24,22 +24,11 @@ from pathlib import Path
 import pandas as pd
 
 from core.agents.base import Agent
+from core.config import get_settings
 from core.features.engineering import ENGINEERED_COLUMNS, TARGET
 from core.orchestrator.state import AgentResult, ArtifactRef, RunState
-from core.validation.checks import (
-    CV_PASS,
-    CV_WARN,
-    ELASTICITY_HIGH,
-    ELASTICITY_LOW,
-    SIGN_PASS,
-    SIGN_WARN,
-    WAPE_PASS,
-    WAPE_WARN,
-    Verdict,
-    evaluate_ppg,
-)
+from core.validation.checks import Verdict, evaluate_ppg
 from core.validation.rolling import build_folds, fit_one_fold
-
 
 SYSTEM_PROMPT = """You are the model-validation reviewer. You receive a
 per-PPG table of rolling-origin cross-validation results: mean hold-out
@@ -222,16 +211,17 @@ class ValidationAgent(Agent):
         for row in flat_table:
             row["rationale"] = rationale_by_id.get(row["ppg_id"], "")
 
+        _t = get_settings().validation
         report_blob = {
             "thresholds": {
-                "sign_pass": SIGN_PASS,
-                "sign_warn": SIGN_WARN,
-                "wape_pass": WAPE_PASS,
-                "wape_warn": WAPE_WARN,
-                "cv_pass": CV_PASS,
-                "cv_warn": CV_WARN,
-                "elasticity_low": ELASTICITY_LOW,
-                "elasticity_high": ELASTICITY_HIGH,
+                "sign_pass": _t.sign_pass,
+                "sign_warn": _t.sign_warn,
+                "wape_pass": _t.wape_pass,
+                "wape_warn": _t.wape_warn,
+                "cv_pass": _t.cv_pass,
+                "cv_warn": _t.cv_warn,
+                "elasticity_low": _t.elasticity_low,
+                "elasticity_high": _t.elasticity_high,
             },
             "n_folds": n_folds,
             "per_ppg": per_ppg,

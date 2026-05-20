@@ -5,15 +5,8 @@ import { useEffect, useState } from "react";
 
 import { relativeTime } from "@/lib/agent-meta";
 import { listRuns } from "@/lib/api";
+import { STATUS_DOT } from "@/lib/theme";
 import type { RunSummary } from "@/lib/types";
-
-const STATUS_DOT: Record<string, string> = {
-  completed: "bg-emerald-400",
-  running: "bg-amber-400",
-  awaiting_approval: "bg-purple-400",
-  failed: "bg-rose-500",
-  pending: "bg-slate-500",
-};
 
 interface Props {
   activeRunId: string;

@@ -5,6 +5,9 @@ export interface TargetRelationshipRow {
   n?: number;
 }
 
+const STRONG_CORRELATION = 0.6;
+const MODERATE_CORRELATION = 0.3;
+
 export function TargetRelationship({ rows }: { rows: TargetRelationshipRow[] }) {
   if (!rows.length) return <p className="text-[11px] text-slate-500">No candidates ranked.</p>;
   return (
@@ -24,9 +27,9 @@ export function TargetRelationship({ rows }: { rows: TargetRelationshipRow[] }) 
           {rows.map((r) => {
             const mag = Math.abs(r.spearman);
             const tone =
-              mag >= 0.6
+              mag >= STRONG_CORRELATION
                 ? "text-emerald-300"
-                : mag >= 0.3
+                : mag >= MODERATE_CORRELATION
                 ? "text-sky-300"
                 : "text-slate-400";
             return (

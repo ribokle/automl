@@ -110,6 +110,13 @@ cd web && pnpm install && pnpm dev    # or pnpm build
   `cli` (shells out to the local `claude` binary). `cli` is never picked
   implicitly — you must set `LLM_PROVIDER=cli`. Integration tests use the
   `live_llm` marker and only hit the network when `RUN_LIVE_LLM=true`.
+- Runtime config (model names, API auth, paths, validation thresholds) lives
+  in `core/config.py` as a pydantic-settings `Settings` class accessed via the
+  cached `get_settings()`. Model names default to `claude-opus-4-7` /
+  `claude-sonnet-4-6` and can be overridden globally
+  (`ANTHROPIC_MODEL_OPUS=...`) or per-agent (`MODEL_<AGENT>=...`, e.g.
+  `MODEL_PPG_MAPPING=claude-sonnet-4-6`). Don't reintroduce ad-hoc
+  `os.environ.get` calls in new code — add the field to `Settings` instead.
 
 ### Orchestration
 

@@ -6,7 +6,6 @@ only accepts the kind of weekly panel CSV the rest of the pipeline reads.
 """
 from __future__ import annotations
 
-import os
 import re
 import unicodedata
 from pathlib import Path
@@ -15,6 +14,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 
 from api.auth import require_auth
 from api.deps import get_run_dir
+from core.config import get_settings
 
 router = APIRouter(prefix="/uploads", tags=["uploads"], dependencies=[Depends(require_auth)])
 
@@ -25,12 +25,7 @@ SAFE_NAME_RE = re.compile(r"[^A-Za-z0-9._-]+")
 
 
 def _max_upload_bytes() -> int:
-    raw = os.environ.get("MAX_UPLOAD_MB", "200")
-    try:
-        mb = int(raw)
-    except ValueError:
-        mb = 200
-    return max(1, mb) * 1024 * 1024
+    return max(1, get_settings().max_upload_mb) * 1024 * 1024
 
 
 def _safe_filename(raw: str | None) -> str:

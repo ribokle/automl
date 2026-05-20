@@ -1,6 +1,8 @@
 "use client";
 
 import { memo } from "react";
+
+import { CHART_DEFAULTS } from "@/lib/chart-config";
 import { EChart } from "./EChart";
 
 export interface FittedVsActualRow {
@@ -46,7 +48,10 @@ interface Props {
   height?: number;
 }
 
-export const FittedVsActual = memo(function FittedVsActual({ data, height = 280 }: Props) {
+export const FittedVsActual = memo(function FittedVsActual({
+  data,
+  height = CHART_DEFAULTS.height,
+}: Props) {
   if (!data.observed_units.length) {
     return <p className="text-[11px] text-slate-500">No fitted-vs-actual data.</p>;
   }
@@ -69,10 +74,10 @@ export const FittedVsActual = memo(function FittedVsActual({ data, height = 280 
   const r = corr(data.observed_log, data.predicted_log);
 
   const option = {
-    grid: { left: 56, right: 24, top: 32, bottom: 40 },
+    grid: CHART_DEFAULTS.grid,
     legend: {
       data: ["train", "test", "y = x"],
-      textStyle: { color: "#cbd5e1", fontSize: 10 },
+      textStyle: { color: CHART_DEFAULTS.textColor, fontSize: CHART_DEFAULTS.fontSize },
       top: 4,
     },
     tooltip: {

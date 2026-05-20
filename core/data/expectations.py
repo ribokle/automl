@@ -11,6 +11,8 @@ from typing import Any
 
 from great_expectations import expectations as gxe
 
+from core.config import get_settings
+
 
 def _volume() -> list[Any]:
     return [
@@ -61,11 +63,12 @@ def _drift(baseline_path: Path | None) -> list[Any]:
     except (FileNotFoundError, json.JSONDecodeError):
         return []
 
+    slack_pct = get_settings().drift_slack_pct
     exps: list[Any] = []
     for col, stats in baseline.get("columns", {}).items():
         mean = stats.get("mean")
         if mean is not None and mean > 0:
-            slack = abs(mean) * 0.4
+            slack = abs(mean) * slack_pct
             exps.append(
                 gxe.ExpectColumnMeanToBeBetween(
                     column=col, min_value=mean - slack, max_value=mean + slack
@@ -74,8 +77,8 @@ def _drift(baseline_path: Path | None) -> list[Any]:
         q25 = stats.get("q25")
         q75 = stats.get("q75")
         if q25 is not None and q75 is not None:
-            slack25 = max(abs(q25) * 0.4, 0.01)
-            slack75 = max(abs(q75) * 0.4, 0.01)
+            slack25 = max(abs(q25) * slack_pct, 0.01)
+            slack75 = max(abs(q75) * slack_pct, 0.01)
             exps.append(
                 gxe.ExpectColumnQuantileValuesToBeBetween(
                     column=col,
