@@ -1,0 +1,76 @@
+{
+  "meta": {
+    "version": "1",
+    "sources": [
+      {
+        "key": "hoch_1995",
+        "citation": "Hoch, Kim, Montgomery & Rossi (1995). Determinants of Store-Level Price Elasticity. Journal of Marketing Research, 32(1), 17-29.",
+        "scope": "18 Dominick's Finer Foods categories, chain-level weekly own-price elasticities."
+      },
+      {
+        "key": "bijmolt_2005",
+        "citation": "Bijmolt, van Heerde & Pieters (2005). New Empirical Generalizations on the Determinants of Price Elasticity. Journal of Marketing Research, 42(2), 141-156.",
+        "scope": "Meta-analysis of 1,851 own-price elasticities across 81 studies."
+      }
+    ],
+    "grand_mean": -2.62,
+    "grand_mean_source": "bijmolt_2005",
+    "band_method": "Mean +/- max(0.5, 0.3*|mean|); approximates a 2*SE envelope around Hoch (1995) point estimates."
+  },
+  "categories": {
+    "analgesics":           {"display_name": "Analgesics",            "mean": -1.85, "lo": -2.41, "hi": -1.30, "source": "hoch_1995"},
+    "bath_soap":            {"display_name": "Bath soap",             "mean": -1.45, "lo": -1.95, "hi": -0.95, "source": "hoch_1995"},
+    "beer":                 {"display_name": "Beer",                  "mean": -1.32, "lo": -1.82, "hi": -0.82, "source": "hoch_1995"},
+    "bottled_juice":        {"display_name": "Bottled juice",         "mean": -2.62, "lo": -3.41, "hi": -1.83, "source": "hoch_1995"},
+    "cereal":               {"display_name": "Cereal",                "mean": -2.07, "lo": -2.69, "hi": -1.45, "source": "hoch_1995"},
+    "cheese":               {"display_name": "Cheese",                "mean": -3.27, "lo": -4.25, "hi": -2.29, "source": "hoch_1995"},
+    "cigarettes":           {"display_name": "Cigarettes",            "mean": -1.04, "lo": -1.54, "hi": -0.54, "source": "hoch_1995"},
+    "cookies":              {"display_name": "Cookies",               "mean": -3.96, "lo": -5.15, "hi": -2.77, "source": "hoch_1995"},
+    "crackers":             {"display_name": "Crackers",              "mean": -1.93, "lo": -2.51, "hi": -1.35, "source": "hoch_1995"},
+    "canned_soup":          {"display_name": "Canned soup",           "mean": -2.30, "lo": -2.99, "hi": -1.61, "source": "hoch_1995"},
+    "detergent":            {"display_name": "Detergent",             "mean": -1.69, "lo": -2.20, "hi": -1.18, "source": "hoch_1995"},
+    "frozen_entrees":       {"display_name": "Frozen entrees",        "mean": -2.91, "lo": -3.78, "hi": -2.04, "source": "hoch_1995"},
+    "frozen_juice":         {"display_name": "Frozen juice",          "mean": -2.59, "lo": -3.37, "hi": -1.81, "source": "hoch_1995"},
+    "refrigerated_juice":   {"display_name": "Refrigerated juice",    "mean": -3.18, "lo": -4.13, "hi": -2.23, "source": "hoch_1995"},
+    "soft_drinks":          {"display_name": "Soft drinks",           "mean": -3.18, "lo": -4.13, "hi": -2.23, "source": "hoch_1995"},
+    "snack_crackers":       {"display_name": "Snack crackers",        "mean": -3.13, "lo": -4.07, "hi": -2.19, "source": "hoch_1995"},
+    "laundry_soap":         {"display_name": "Laundry soap",          "mean": -2.46, "lo": -3.20, "hi": -1.72, "source": "hoch_1995"},
+    "toothbrushes":         {"display_name": "Toothbrushes",          "mean": -1.30, "lo": -1.80, "hi": -0.80, "source": "hoch_1995"},
+    "toothpaste":           {"display_name": "Toothpaste",            "mean": -1.65, "lo": -2.15, "hi": -1.15, "source": "hoch_1995"},
+    "tuna":                 {"display_name": "Tuna",                  "mean": -1.94, "lo": -2.52, "hi": -1.36, "source": "hoch_1995"},
+    "yogurt":               {"display_name": "Yogurt",                "mean": -2.45, "lo": -3.19, "hi": -1.72, "source": "bijmolt_2005"},
+    "snacks":               {"display_name": "Salty snacks",          "mean": -2.30, "lo": -3.00, "hi": -1.60, "source": "bijmolt_2005"},
+    "ice_cream":            {"display_name": "Ice cream",             "mean": -2.30, "lo": -3.00, "hi": -1.60, "source": "bijmolt_2005"},
+    "coffee":               {"display_name": "Coffee",                "mean": -2.10, "lo": -2.73, "hi": -1.47, "source": "bijmolt_2005"},
+    "paper_products":       {"display_name": "Paper products",        "mean": -2.10, "lo": -2.73, "hi": -1.47, "source": "bijmolt_2005"}
+  },
+  "aliases": {
+    "soda":                   "soft_drinks",
+    "carbonated_beverages":   "soft_drinks",
+    "soft drinks":            "soft_drinks",
+    "frozen_juices":          "frozen_juice",
+    "frozen pizza":           "frozen_entrees",
+    "frozen_pizza":           "frozen_entrees",
+    "frozen dinners":         "frozen_entrees",
+    "cereals":                "cereal",
+    "rtecereal":              "cereal",
+    "rte cereal":             "cereal",
+    "bottled_juices":         "bottled_juice",
+    "refrigerated_juices":    "refrigerated_juice",
+    "fab_softener":           "laundry_soap",
+    "fabric softener":        "laundry_soap",
+    "laundry detergent":      "detergent",
+    "soup":                   "canned_soup",
+    "soups":                  "canned_soup",
+    "water":                  "soft_drinks",
+    "sparkling water":        "soft_drinks",
+    "energy":                 "soft_drinks",
+    "juice":                  "bottled_juice",
+    "snack crackers":         "snack_crackers",
+    "snacks":                 "snacks",
+    "salty snacks":           "snacks",
+    "chips":                  "snacks",
+    "bathroom tissue":        "paper_products",
+    "paper towels":           "paper_products"
+  }
+}

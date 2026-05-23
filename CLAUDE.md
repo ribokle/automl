@@ -165,6 +165,23 @@ cd web && pnpm install && pnpm dev    # or pnpm build
 - New data quality checks: prefer dbt schema tests or dbt-expectations for
   per-row / per-column rules, and the in-code GE suites in
   `core/data/expectations.py` for distribution/relationship rules.
+- The pipeline runs on either the synthetic generator (`synthetic/`) or
+  real Dominick's scanner data. To use Dominick's: sign the Kilts agreement
+  (https://www.chicagobooth.edu/research/kilts), drop the per-category
+  CSVs under `data/dominicks-raw/` (gitignored — the license forbids
+  redistribution), and run `uv run automl prepare-dominicks
+  --categories yogurt,beer` to land a panel-shaped CSV at
+  `data/dominicks.csv`. The adapter lives at
+  `core/data/loaders/dominicks.py`; it maps Dominick's columns to the
+  schema in `core/data/schema.py` and joins each category to the
+  published-elasticity benchmark via `core/data/loaders/dominicks_categories.py`.
+- Static published-elasticity benchmarks (Hoch 1995 Dominick's chain
+  ranges + Bijmolt 2005 meta-analysis grand mean) live at
+  `core/benchmarks/data/elasticity.json` and are consumed by the
+  validation agent — see `core/benchmarks/elasticity.py:lookup_category`
+  and `classify`. Each PPG's recovered elasticity is scored against the
+  band for its category and surfaced as `benchmark_status` in
+  `validation_table.json`.
 
 ### Frontend
 

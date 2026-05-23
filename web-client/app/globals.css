@@ -1,0 +1,74 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --font-sans: "Inter", system-ui, sans-serif;
+    --font-display: "Inter Tight", "Inter", system-ui, sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, monospace;
+    --radius: 0.5rem;
+
+    --background: 48 33% 97%;
+    --surface: 0 0% 100%;
+    --raised: 0 0% 100%;
+    --foreground: 240 6% 5%;
+    --muted: 44 14% 94%;
+    --muted-foreground: 240 4% 38%;
+    --border: 44 8% 88%;
+    --hairline: 240 6% 5% / 0.06;
+    --ring: 160 47% 53%;
+    --accent: 160 47% 53%;
+    --accent-foreground: 160 60% 12%;
+    --positive: 160 64% 34%;
+    --negative: 0 72% 51%;
+    --warning: 35 92% 45%;
+    --shadow-card: 0 1px 2px rgb(0 0 0 / 0.04);
+    --shadow-raised: 0 1px 2px rgb(0 0 0 / 0.04), 0 8px 24px rgb(0 0 0 / 0.04);
+    --shadow-glow: 0 0 0 1px hsl(var(--accent) / 0.18);
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans;
+    font-feature-settings: "cv11", "ss01", "ss03";
+  }
+
+  ::selection {
+    background-color: hsl(var(--accent) / 0.25);
+    color: hsl(var(--foreground));
+  }
+
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .display {
+    font-family: var(--font-display);
+    letter-spacing: -0.022em;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+  .text-pretty {
+    text-wrap: pretty;
+  }
+  .border-hairline {
+    border-color: hsl(var(--hairline));
+  }
+  .divide-hairline > * + * {
+    border-color: hsl(var(--hairline));
+  }
+  .bg-noise {
+    background-image:
+      radial-gradient(circle at 0% 0%, hsl(var(--accent) / 0.05), transparent 50%);
+  }
+}

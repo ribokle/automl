@@ -42,6 +42,13 @@ metrics):
 - **Per-stage FAQ + corner cases** ✅ every agent card carries a
   collapsible *Common questions & corner cases* disclosure; full reference
   in `docs/stage-faqs.md`.
+- **Real CPG scanner data + published-elasticity benchmarks** ✅
+  Dominick's Finer Foods loader (`automl prepare-dominicks`) lands the
+  Kilts Center panel in the canonical schema so the pipeline runs on real
+  data, not just the synthetic generator. The validation agent now scores
+  each PPG's recovered elasticity against Hoch et al. (1995) Dominick's
+  category ranges, with the Bijmolt et al. (2005) meta-analysis grand
+  mean (−2.62) as the fallback for categories Hoch didn't cover.
 
 See `CLAUDE.md` for contributor conventions.
 
@@ -149,9 +156,53 @@ uv run automl run --data data/synthetic.csv --no-gates --out runs
 # Regenerate the synthetic panel from synthetic/truth.json
 uv run automl seed
 
+# Convert a downloaded Dominick's archive into a panel-shaped CSV
+#   (see "Using real Dominick's data" below for the prerequisite)
+uv run automl prepare-dominicks --categories yogurt,beer --out data/dominicks.csv
+
 # Capture a distribution snapshot from a completed run for drift checks
 uv run automl baseline-create runs/<run_id> --name <name>
 ```
+
+### Using real Dominick's data
+
+The pipeline also accepts the Dominick's Finer Foods scanner panel published
+by the [Kilts Center, University of Chicago Booth](https://www.chicagobooth.edu/research/kilts).
+The license forbids redistribution, so the raw files have to be
+downloaded after signing the Kilts data-use agreement — they're not in
+this repo.
+
+1. Sign the Kilts agreement and download the per-category archives
+   (movement file `w<code>.csv` + UPC dictionary `upc<code>.csv` per
+   category, e.g. `wyog.csv` + `upcyog.csv` for yogurt).
+2. Drop them anywhere under `data/dominicks-raw/` (gitignored). Nested
+   subdirectories are fine — the loader globs by filename.
+3. Run the adapter:
+
+   ```bash
+   uv run automl prepare-dominicks \
+       --raw-dir data/dominicks-raw \
+       --categories yogurt,beer,soft_drinks \
+       --out data/dominicks.csv
+   ```
+
+   Use `--categories all` for every known Dominick's category. The loader
+   maps each category's movement + UPC dictionary onto the canonical
+   panel schema (per-unit `price = PRICE/QTY`, trailing-13-week non-promo
+   `base_price`, `SALE ∈ {B,S,C}` → `tpr_flag`, week 1 anchored to
+   1989-09-14, US-holiday weeks tagged via the `holidays` package).
+
+4. Feed the resulting CSV straight into the pipeline:
+
+   ```bash
+   uv run automl run --data data/dominicks.csv --no-gates --out runs
+   ```
+
+The full mapping lives at `core/data/loaders/dominicks.py`; the category
+code → benchmark-key table is at `core/data/loaders/dominicks_categories.py`.
+The validation agent automatically joins each PPG's recovered elasticity
+to the published category band (Hoch 1995 / Bijmolt 2005) — see *Published
+elasticity benchmarks* below.
 
 Per-run artefacts land in `runs/<run_id>/`. The file set has grown with
 Phase 2a — every agent now writes both its narrative artefact and one or
@@ -176,7 +227,7 @@ more chart-ready JSONs the frontend renders directly.
 | `decomposition_per_ppg_week.json`, `decomposition_summary.json`, `decomposition_table.json` | decomposition | weekly base + due-by-group + residual; closed-form for OLS, ablation for LightGBM |
 | `simulation_grid.json`, `simulation_summary.json`, `simulation_table.json` | simulation | price × promo sweep + revenue / margin-optimal cells |
 | `optimization_results.json`, `optimization_table.json`, `optimization_constraints.json` | optimization | continuous + MILP solution per PPG, resolved constraints, `chosen_slacks` per cell |
-| `validation_report.json`, `validation_table.json`, `validation_residuals.json` | validation | rolling-origin CV verdict + per-fold detail + pooled hold-out residuals |
+| `validation_report.json`, `validation_table.json`, `validation_residuals.json` | validation | rolling-origin CV verdict + per-fold detail + pooled hold-out residuals + per-PPG `benchmark_status` / `benchmark_low` / `benchmark_high` / `benchmark_source` (Hoch 1995 / Bijmolt 2005) |
 | `insights_summary.json`, `cost_summary.json`, `report.html`, `report.pdf` | insights | exec headline + KPIs + recommendations table, per-agent token/cost rollup, HTML + (WeasyPrint) PDF report |
 | `<agent>_llm_trace.json` | every LLM-using agent | system / user / response / model / tokens / dry-run flag, one per call (disable with `LLM_TRACE=false`) |
 
@@ -293,6 +344,39 @@ repo root is auto-loaded.
 | `DRIFT_SLACK_PCT` | `0.4` | ±40% slack on numeric-column drift checks. |
 | `VALIDATION__SIGN_PASS`, `VALIDATION__WAPE_PASS`, …| see `core/config.py` | Per-PPG validation cutoffs. Nested env keys: `VALIDATION__<FIELD>`. |
 
+**Published elasticity benchmarks**
+
+The validation agent scores every PPG's recovered elasticity against a
+published category range and reports it as `benchmark_status ∈ {in_band,
+out_band_low, out_band_high, no_benchmark}` on every row of
+`validation_table.json`. The summary surfaces on the validation card's
+"Benchmark alignment" gate and on `result.outputs` as
+`n_in_benchmark` / `n_out_benchmark` / `benchmark_pass_rate`.
+
+The benchmark table is static and bakes in two sources:
+
+- **Hoch, Kim, Montgomery & Rossi (1995),** *Determinants of Store-Level
+  Price Elasticity* (JMR 32:1) — the primary reference for any of the
+  18 Dominick's categories the paper covered (beer, yogurt, soft drinks,
+  cookies, frozen entrees, refrigerated juices, etc.).
+- **Bijmolt, van Heerde & Pieters (2005),** *New Empirical Generalizations
+  on the Determinants of Price Elasticity* (JMR 42:2) — meta-analysis
+  grand mean **−2.62** across 1,851 estimates; provides per-category
+  fallbacks for Hoch-uncovered categories.
+
+The numbers, alias map, and provenance string live at
+`core/benchmarks/data/elasticity.json`. The lookup logic is at
+`core/benchmarks/elasticity.py` (`lookup_category` does an exact / alias
+/ substring match; `classify` returns the band status). Each PPG's
+category label is sourced from `ppg_mapping_table.json`, so the join is
+automatic for any panel — synthetic or Dominick's — that flows through
+the standard PPG mapping agent.
+
+To add a new category, append a row to `elasticity.json`; no code change
+is needed. The Confidence Forest chart in the client UI also overlays a
+global dashed reference line at the Bijmolt grand mean and outlines any
+bar whose elasticity sits outside the published band in warning colour.
+
 **Next.js frontend**
 
 | Variable | Default | Purpose |
@@ -308,7 +392,7 @@ pull it in on the fly with `uv`:
 
 ```bash
 uv run --with pytest pytest tests/ -q
-# 151 collected
+# 167 collected
 ```
 
 Highlights of the suite (`tests/unit/`):
@@ -347,17 +431,33 @@ Highlights of the suite (`tests/unit/`):
   source path under `core/`, `api/`, `cli/`, `synthetic/`, `tests/`,
   `web/app/`, `web/components/`, `web/lib/` is silently matched by a
   `.gitignore` rule (catches the unanchored `runs/` trap).
+- **Dominick's loader** (`test_dominicks_loader.py`) — fixture-based
+  round trip from per-category movement + UPC CSVs into the canonical
+  panel schema; verifies the 1989-09-14 week anchor, per-unit price
+  derivation, promo / `base_price` relationship, and `PanelRow`
+  pydantic validation.
+- **Elasticity benchmarks** (`test_elasticity_benchmarks.py`,
+  `test_validation_benchmark_check.py`) — table loads with known Hoch
+  + Bijmolt categories; lookup resolves exact keys, aliases, and
+  substring matches; `classify` returns the right band status for
+  in-band / more-elastic / less-elastic / no-benchmark / NaN cases;
+  validation agent's PPG → category join reads
+  `ppg_mapping_table.json` correctly.
 
 ## Repository layout
 
 ```
 api/                   FastAPI app + routes (runs, events, uploads, artefacts, approvals, rerun)
-cli/                   Typer CLI (`automl run|seed|baseline-create`)
+cli/                   Typer CLI (`automl run|seed|baseline-create|prepare-dominicks`)
 core/
   agents/              One file per agent; all inherit core.agents.base.Agent
+  benchmarks/          Static published-elasticity table (Hoch 1995 + Bijmolt 2005)
+                       and the lookup / classify helpers the validation agent uses
   config.py            Central pydantic-settings Settings + get_settings() singleton
   data/                Ingestion, dbt runner, GE runner, profiling tools,
                        chart-ready data builders (charts.py), ingestion report
+    loaders/           Third-party dataset adapters; `dominicks.py` lands the
+                       Kilts Dominick's archive in the canonical panel schema
   decomp/              Closed-form (due_to.py) + ablation decomposition + group mapping
   features/            EDA tools, engineering pipeline, VIF + correlation refine
   llm/                 AnthropicClient + per-agent model routing + LLM trace + cost
@@ -372,7 +472,7 @@ core/
 dbt/automl_dbt/        dbt project (DuckDB profile, staging + panel mart, tests)
 docs/                  Long-form references (stage-faqs.md, architecture.png)
 synthetic/             Synthetic data generator + ground-truth JSON
-tests/unit/            pytest suites (151 collected)
+tests/unit/            pytest suites (167 collected)
 web/
   app/                 Next.js routes (`/`, `/runs`, `/runs/[id]`, `/dev/*` mockups)
                        Server-side proxy at `app/api/[...path]/route.ts`
