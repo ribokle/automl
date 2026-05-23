@@ -22,6 +22,7 @@ AGENT_ORDER: list[str] = [
     "ppg_selection",
     "feature_selection",
     "eda",
+    "advanced_eda",
     "feature_engineering",
     "feature_refine",
     "modeling",

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { getArtifact } from "@/lib/api";
 import { CorrHeatmap, type CorrData } from "./charts/CorrHeatmap";
@@ -85,6 +86,8 @@ export function AgentVisuals(props: Props) {
       return <PPGSelectionVisuals {...props} />;
     case "eda":
       return <EDAVisuals {...props} />;
+    case "advanced_eda":
+      return <AdvancedEDAVisuals {...props} />;
     case "feature_engineering":
       return <FeatureEngineeringVisuals {...props} />;
     case "feature_refine":
@@ -245,6 +248,64 @@ function EDAVisuals({ runId, ready }: Props) {
           </ul>
         </Section>
       )}
+    </div>
+  );
+}
+
+interface AdvancedEDASummary {
+  summary: {
+    n_ppgs_top_k: number;
+    n_anomalies: number;
+    n_change_points: number;
+    stationarity_pass_rate: number;
+    abc_counts: Record<string, number>;
+    anomaly_breakdown: Record<string, number>;
+  };
+  findings: string[];
+  narrative: string;
+}
+
+function AdvancedEDAVisuals({ runId, ready }: Props) {
+  const report = useArtifact<AdvancedEDASummary>(runId, "advanced_eda_report.json", ready);
+  if (!report || "missing_columns" in report) return null;
+  const s = report.summary;
+  return (
+    <div className="mt-4 space-y-4 border-t border-slate-800 pt-4">
+      <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-4">
+        <Kpi label="PPGs analysed" value={s.n_ppgs_top_k} />
+        <Kpi
+          label="Stationary"
+          value={`${Math.round(s.stationarity_pass_rate * 100)}%`}
+        />
+        <Kpi label="Anomalies" value={s.n_anomalies} />
+        <Kpi label="Change points" value={s.n_change_points} />
+      </div>
+      {report.findings?.length > 0 && (
+        <Section title="Top findings">
+          <ul className="space-y-1 text-[11px] text-slate-300">
+            {report.findings.slice(0, 5).map((f, i) => (
+              <li key={i} className="rounded border border-slate-800 bg-slate-900/40 px-2 py-1">
+                {f}
+              </li>
+            ))}
+          </ul>
+        </Section>
+      )}
+      <Link
+        href={`/runs/${runId}/eda`}
+        className="inline-flex items-center gap-1 rounded border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-[11px] text-emerald-200 hover:bg-emerald-500/20"
+      >
+        Open advanced EDA dashboard →
+      </Link>
+    </div>
+  );
+}
+
+function Kpi({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div className="flex flex-col gap-1 rounded border border-slate-800 bg-slate-900/40 px-3 py-2">
+      <span className="text-[10px] uppercase tracking-wider text-slate-500">{label}</span>
+      <span className="font-mono text-base text-emerald-300">{value}</span>
     </div>
   );
 }

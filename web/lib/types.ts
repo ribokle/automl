@@ -4,6 +4,7 @@ export const AGENT_ORDER = [
   "ppg_selection",
   "feature_selection",
   "eda",
+  "advanced_eda",
   "feature_engineering",
   "feature_refine",
   "modeling",

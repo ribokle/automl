@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from core.agents.base import Agent, StubAgent
 from core.llm.client import AnthropicClient, LLMProvider
+from core.agents.advanced_eda import AdvancedEDAAgent
 from core.agents.decomposition import DecompositionAgent
 from core.agents.eda import EDAAgent
 from core.agents.feature_engineering import FeatureEngineeringAgent
@@ -34,6 +35,7 @@ REAL_AGENTS: dict[str, type[Agent]] = {
     "ppg_selection": PPGSelectionAgent,
     "feature_selection": FeatureSelectionAgent,
     "eda": EDAAgent,
+    "advanced_eda": AdvancedEDAAgent,
     "feature_engineering": FeatureEngineeringAgent,
     "feature_refine": FeatureRefineAgent,
     "modeling": ModelingAgent,

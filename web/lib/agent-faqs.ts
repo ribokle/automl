@@ -420,6 +420,61 @@ export const STAGE_FAQS: Record<AgentName, StageFAQEntry> = {
     ],
   },
 
+  advanced_eda: {
+    docsAnchor: "advanced-eda",
+    questions: [
+      {
+        q: "Why are only the top-K PPGs analysed?",
+        a: "STL, ACF, isolation-forest and PELT all scale per-series; on Dominick's-sized data running them on every PPG is wasteful. The agent caps heavy analysis at the top-K by revenue (default 50, configurable via run.options['advanced_eda']['max_series']) and emits cheap summaries for the rest.",
+      },
+      {
+        q: "Is the price-volume slope the same as elasticity?",
+        a: "No. It's an uncontrolled univariate log-log slope on (log price, log units). The modelling agent recovers the controlled estimate with the full feature set. Use the slope as a sign-check, not a number.",
+      },
+      {
+        q: "Why is the cross-PPG correlation labelled 'demand correlation' not 'cannibalisation'?",
+        a: "At EDA stage we can't separate substitution from common-cause drivers (holiday, weather, supply). The matrix is a category-coherence check; cannibalisation evidence requires the controlled cross-elasticities the decomposition agent produces.",
+      },
+      {
+        q: "How is a stockout detected?",
+        a: "units = 0 with distribution_acv > 0 AND the prior week had positive units at unchanged price. Pure heuristic — picks up classic out-of-stock weeks without flagging delisting events.",
+      },
+      {
+        q: "What's a change point?",
+        a: "PELT detects step changes in baseline price per PPG. The modelling agent should treat weeks across a change point as different regimes — fitting a single elasticity across a relaunch is dangerous.",
+      },
+    ],
+    cornerCases: [
+      {
+        condition: "Series shorter than 2 × period",
+        behaviour: "STL is skipped for that PPG; ACF/PACF and stationarity still run if n ≥ 20.",
+        userSees: "STL panel shows 'insufficient data'.",
+      },
+      {
+        condition: "Single-store panel",
+        behaviour: "store_variability sidecar is empty; everything else is unaffected.",
+      },
+      {
+        condition: "No promo columns",
+        behaviour: "Promo lift / promo calendar artefacts are written but empty; downstream UI sections collapse gracefully.",
+      },
+      {
+        condition: "No holiday column",
+        behaviour: "holiday_lift.json contains an empty rows array.",
+      },
+      {
+        condition: "LLM unreachable",
+        behaviour: "Deterministic dry-run summary fills the findings + narrative; artefact contents are unchanged.",
+      },
+    ],
+    engineeringNotes: [
+      { topic: "Pure stats helpers", ref: "core/features/advanced_eda.py" },
+      { topic: "Agent + artefact orchestration", ref: "core/agents/advanced_eda.py" },
+      { topic: "Frontend dashboard", ref: "web/app/runs/[id]/eda + web/components/AdvancedEDADashboard.tsx" },
+      { topic: "Compute caps", ref: "run.options['advanced_eda'] = {max_series, corr_cap}" },
+    ],
+  },
+
   feature_engineering: {
     docsAnchor: "feature-engineering",
     questions: [

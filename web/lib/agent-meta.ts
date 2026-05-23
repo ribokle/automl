@@ -44,6 +44,13 @@ export const AGENT_META: Record<AgentName, AgentMetaEntry> = {
     hasVisuals: true,
     hasLLM: true,
   },
+  advanced_eda: {
+    title: "Advanced EDA",
+    description:
+      "Time-series decomposition, structural anomaly detection, change points, promo lift sketches, cross-PPG correlation, Pareto / ABC, and a promo calendar.",
+    hasVisuals: true,
+    hasLLM: true,
+  },
   feature_engineering: {
     title: "Feature Engineering",
     description: "Build lagged, holiday and competitive-price features.",
@@ -176,6 +183,15 @@ export function summariseOutputs(
           ? `${o.n_pass}/${o.n_validated} pass`
           : "",
         typeof o.n_fail === "number" && o.n_fail > 0 ? `${o.n_fail} fail` : "",
+      ].filter(Boolean);
+    case "advanced_eda":
+      return [
+        typeof o.n_ppgs_top_k === "number" ? `${o.n_ppgs_top_k} PPGs analysed` : "",
+        typeof o.n_anomalies === "number" ? `${o.n_anomalies} anomalies` : "",
+        typeof o.n_change_points === "number" ? `${o.n_change_points} change points` : "",
+        typeof o.stationarity_pass_rate === "number"
+          ? `${Math.round(Number(o.stationarity_pass_rate) * 100)}% stationary`
+          : "",
       ].filter(Boolean);
     case "insights":
       return [

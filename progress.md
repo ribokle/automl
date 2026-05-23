@@ -1189,3 +1189,90 @@ client-facing validation page.
   warning stroke on out-of-band PPGs. ✅
 - Web-client `tsc --noEmit` + `next build` clean. ✅
 - Full unit suite (167 tests) green. ✅
+
+## Advanced EDA module ✅
+
+A 15th agent — `advanced_eda` — slots into `AGENT_ORDER` right after `eda`
+and delivers the time-series / structural diagnostics the original EDA card
+never covered. Operator-facing dashboard at `/runs/[id]/eda`.
+
+**Backend**
+- `core/features/advanced_eda.py` — pure stats helpers (no IO / LLM): STL
+  decomposition, ACF/PACF, ADF + KPSS stationarity, three structural
+  anomaly detectors (stockout, pantry-load, forward-buy) plus
+  `sklearn.IsolationForest` on (log_price, discount_depth, lag1_log_units),
+  PELT change points on baseline price via `ruptures`, distribution stats
+  (skew / kurtosis / Shapiro), bootstrapped TPR/display/feature lift,
+  within-category cross-PPG correlation (renamed away from
+  "cannibalisation" per Plan-agent review — confounding with common-cause
+  drivers is unresolvable at EDA stage), Pareto / Lorenz on volume + revenue
+  with ABC class, per-PPG price ladder + uncontrolled log-log slope
+  (`price_volume_slope`, never `elasticity`, with caveat field), promo
+  calendar, holiday lift, and categorical cardinality with rare-flag.
+- `core/data/advanced_charts.py` — chart-spec builders that emit
+  ECharts-ready JSON; same graceful-degradation pattern as
+  `core/data/charts.py`.
+- `core/agents/advanced_eda.py` — agent inheriting `core.agents.base.Agent`.
+  Compute caps via `run.options["advanced_eda"] = {max_series, corr_cap}`
+  (defaults 50 / 20). All blocks dispatched through `asyncio.to_thread`;
+  dry-run LLM fallback narrates findings deterministically.
+- `core/orchestrator/state.py` — `advanced_eda` slotted after `eda`.
+- `core/orchestrator/runner.py` — registered in `REAL_AGENTS`.
+- `pyproject.toml` — added `ruptures>=1.1`; `statsmodels` was already in
+  deps. Sticking with sklearn's IsolationForest (no pyod).
+
+**Frontend**
+- `web/app/runs/[id]/eda/page.tsx` — new operator dashboard.
+- `web/components/AdvancedEDADashboard.tsx` — single scrollable layout
+  with sticky anchor nav (no tabs — operators need cross-section
+  reference). Per-section PPG selectors. Lazy-loaded artefacts via the
+  existing `useArtifact` pattern.
+- `web/components/charts/STLDecomposition.tsx`,
+  `ACFPlot.tsx`, `AnomalyTimeline.tsx`, `LorenzCurve.tsx`,
+  `PriceLadderScatter.tsx`, `PromoCalendarHeatmap.tsx`,
+  `PromoLiftBars.tsx`, and
+  `web/components/tables/HolidayLiftTable.tsx` — new ECharts components.
+- `web/components/AgentVisuals.tsx` — new `AdvancedEDAVisuals` card with
+  KPIs + "Open advanced EDA dashboard →" link.
+- `web/lib/agent-meta.ts`, `lib/types.ts`, `lib/agent-faqs.ts` — registered
+  the new agent name and stage FAQ entry.
+
+**Artifacts** (under `runs/<id>/`)
+- `advanced_eda_report.json` (summary + findings + narrative)
+- `time_series_diagnostics.json` (STL + ACF + stationarity per PPG +
+  store-variability sidecar)
+- `temporal_anomalies.json` (4 anomaly types, breakdown counts)
+- `change_points.json` (per-PPG baseline-price PELT shifts)
+- `distribution_report.json` (skew / kurtosis / Shapiro p per column)
+- `promo_lift_sketches.json` (TPR / display / feature lift + bootstrap CI
+  + promo-window length distribution)
+- `cross_ppg_correlation.json` (per-category heatmaps; capped at top-20
+  PPGs/category)
+- `pareto_abc.json` (SKU / brand / store Lorenz on volume + revenue;
+  per-PPG ABC class)
+- `price_ladder.json` (per-PPG ladder + price-volume slope + caveat)
+- `promo_calendar.json` (week × PPG promo-type heatmap)
+- `holiday_lift.json` (per-holiday-week lift vs trailing-4-week median)
+- `cardinality_report.json` (category / brand / pack_size / segment /
+  region value counts with rare flag)
+- `advanced_eda_charts.json` (pre-packed chart shapes for the dashboard)
+
+**Tests**
+- `tests/unit/test_advanced_eda_features.py` — 23 unit tests for the
+  pure-stats helpers (STL recovery, ADF separates RW vs white noise,
+  injected stockout / pantry-load / forward-buy / change-point recovery,
+  ABC partitions, slope sign, etc.).
+- `tests/integration/test_advanced_eda_agent.py` — 8 integration tests
+  covering end-to-end agent run on the synthetic panel, every artefact's
+  schema, the `max_series` compute cap, and the price-ladder caveat.
+
+**Verification**
+- `uv run --with pytest --with pytest-asyncio --with httpx pytest tests/`
+  → 199 passed, 3 skipped (live-LLM gated), 0 failed.
+- `uv run automl run --data data/synthetic.csv --no-gates` — all 15
+  agents complete; `advanced_eda` produces 13 artefacts.
+- `./node_modules/.bin/tsc --noEmit` + `next build` — clean; the new
+  `/runs/[id]/eda` route appears in the build manifest at 8.13 kB.
+- API + Next.js production server up: `GET /runs/<id>/eda` returns 200
+  and the dashboard mounts; `GET /artifacts/<id>/advanced_eda_report.json`
+  returns the report blob.
