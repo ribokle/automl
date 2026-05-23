@@ -1,0 +1,104 @@
+{
+  "_README": [
+    "Copy this file to scripts/dominicks_manifest.json and fill in either `base_url`",
+    "or per-file `url`. The downloader builds each URL as `{base_url}/{filename}` if",
+    "no per-file `url` is set.",
+    "",
+    "To populate URLs:",
+    "  1. Sign the Kilts agreement at https://www.chicagobooth.edu/research/kilts/research-data/dominicks",
+    "  2. Open the download page they give you.",
+    "  3. Right-click each download link and copy the URL. If they all share a common",
+    "     prefix (likely), set `base_url` once and leave per-file `url` blank.",
+    "  4. The Kilts archive ships either .zip per file (older) or loose .csv (newer).",
+    "     If your page lists .csv, change every filename below from .zip to .csv.",
+    "",
+    "There are 56 files: 27 movement (w*.zip) + 27 UPC (upc*.zip) + 2 metadata.",
+    "Comment in JSON: any key starting with `_` is ignored by the downloader."
+  ],
+  "base_url": "",
+  "files": [
+    {"filename": "ccount.zip",  "category": "_metadata"},
+    {"filename": "demo.zip",    "category": "_metadata"},
+
+    {"filename": "wana.zip",    "category": "analgesics"},
+    {"filename": "upcana.zip",  "category": "analgesics"},
+
+    {"filename": "wbat.zip",    "category": "bath_soap"},
+    {"filename": "upcbat.zip",  "category": "bath_soap"},
+
+    {"filename": "wbnt.zip",    "category": "bathroom_tissue"},
+    {"filename": "upcbnt.zip",  "category": "bathroom_tissue"},
+
+    {"filename": "wber.zip",    "category": "beer"},
+    {"filename": "upcber.zip",  "category": "beer"},
+
+    {"filename": "wbjc.zip",    "category": "bottled_juice"},
+    {"filename": "upcbjc.zip",  "category": "bottled_juice"},
+
+    {"filename": "wcer.zip",    "category": "cereal"},
+    {"filename": "upccer.zip",  "category": "cereal"},
+
+    {"filename": "wche.zip",    "category": "cheese"},
+    {"filename": "upcche.zip",  "category": "cheese"},
+
+    {"filename": "wcig.zip",    "category": "cigarettes"},
+    {"filename": "upccig.zip",  "category": "cigarettes"},
+
+    {"filename": "wcoo.zip",    "category": "cookies"},
+    {"filename": "upccoo.zip",  "category": "cookies"},
+
+    {"filename": "wcra.zip",    "category": "crackers"},
+    {"filename": "upccra.zip",  "category": "crackers"},
+
+    {"filename": "wdid.zip",    "category": "dish_detergent"},
+    {"filename": "upcdid.zip",  "category": "dish_detergent"},
+
+    {"filename": "wfre.zip",    "category": "frozen_entrees"},
+    {"filename": "upcfre.zip",  "category": "frozen_entrees"},
+
+    {"filename": "wfrd.zip",    "category": "frozen_dinners"},
+    {"filename": "upcfrd.zip",  "category": "frozen_dinners"},
+
+    {"filename": "wfrj.zip",    "category": "frozen_juice"},
+    {"filename": "upcfrj.zip",  "category": "frozen_juice"},
+
+    {"filename": "wfsf.zip",    "category": "fabric_softener"},
+    {"filename": "upcfsf.zip",  "category": "fabric_softener"},
+
+    {"filename": "wlnd.zip",    "category": "laundry_detergent"},
+    {"filename": "upclnd.zip",  "category": "laundry_detergent"},
+
+    {"filename": "woat.zip",    "category": "oatmeal"},
+    {"filename": "upcoat.zip",  "category": "oatmeal"},
+
+    {"filename": "wptw.zip",    "category": "paper_towels"},
+    {"filename": "upcptw.zip",  "category": "paper_towels"},
+
+    {"filename": "wrfj.zip",    "category": "refrigerated_juice"},
+    {"filename": "upcrfj.zip",  "category": "refrigerated_juice"},
+
+    {"filename": "wsdr.zip",    "category": "soft_drinks"},
+    {"filename": "upcsdr.zip",  "category": "soft_drinks"},
+
+    {"filename": "wsna.zip",    "category": "snack_crackers"},
+    {"filename": "upcsna.zip",  "category": "snack_crackers"},
+
+    {"filename": "wsoa.zip",    "category": "soaps"},
+    {"filename": "upcsoa.zip",  "category": "soaps"},
+
+    {"filename": "wsou.zip",    "category": "canned_soup"},
+    {"filename": "upcsou.zip",  "category": "canned_soup"},
+
+    {"filename": "wtbr.zip",    "category": "toothbrushes"},
+    {"filename": "upctbr.zip",  "category": "toothbrushes"},
+
+    {"filename": "wtna.zip",    "category": "tuna"},
+    {"filename": "upctna.zip",  "category": "tuna"},
+
+    {"filename": "wtpa.zip",    "category": "toothpaste"},
+    {"filename": "upctpa.zip",  "category": "toothpaste"},
+
+    {"filename": "wyog.zip",    "category": "yogurt"},
+    {"filename": "upcyog.zip",  "category": "yogurt"}
+  ]
+}
