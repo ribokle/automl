@@ -1052,3 +1052,140 @@ cards.
 - `web/components/ReplayBar.tsx` — right-arrow at end-of-stream now clamps to
   `tLast` instead of jumping to live; user must click the "live" button
   explicitly.
+
+---
+
+## Datasets & published-elasticity benchmarks ✅
+**Status:** complete. Two largely independent additions on top of the
+shipped phases — neither blocks any phase plan, both close gaps the
+client-UI prototype surfaced ("can we run on real data?", "how do our
+elasticities compare to the literature?").
+
+### Workstream A — Dominick's Finer Foods loader ✅
+**Status:** complete. The pipeline now accepts the Kilts Center's
+Dominick's scanner panel as a first-class data source alongside the
+synthetic generator. End-to-end on a downloaded category set:
+`automl prepare-dominicks --categories yogurt,beer --out data/dominicks.csv`
+→ `automl run --data data/dominicks.csv --no-gates` runs the full DAG
+with no agent code touched past ingestion.
+
+**Backend**
+- `core/data/loaders/dominicks.py` — converts per-category movement
+  (`w<code>.csv`) + UPC dictionary (`upc<code>.csv`) CSVs into the
+  canonical panel schema:
+  - week → date via the published Dominick's anchor (week 1 starts
+    Thursday 1989-09-14).
+  - `price = PRICE / max(QTY, 1)` (per-unit shelf price; e.g. 6-pack
+    beer at $5.99 becomes ~$1.00 per unit).
+  - `base_price` = trailing 13-week max of price on non-promo weeks
+    per (sku, store), clamped to be ≥ live price.
+  - `tpr_flag = 1` when `SALE ∈ {B,S,C}` (bonus buy / sale / coupon).
+  - `display_flag` / `feature_flag` = 0 (not recorded in Dominick's).
+  - `distribution_acv` = 100 (single chain).
+  - `region` = "Chicago", `competitor_price` = null.
+  - Brand inferred from the first all-caps token of `DESCRIP`;
+    `pack_size` from `SIZE`; `segment` from `COM_CODE`.
+  - `holiday` tagged from the `holidays` package (US federal) if the
+    week_start falls within 7 days of a holiday.
+- `core/data/loaders/dominicks_categories.py` — Dominick's 4-letter
+  category code → (label, display name, benchmark key) map. Covers
+  27 categories spanning Hoch's 18 + a handful of Dominick's-later
+  additions (frozen dinners, paper towels, bathroom tissue, oatmeal,
+  yogurt).
+- `cli/run.py` — registers `automl prepare-dominicks` as a Typer
+  subcommand: reads `data/dominicks-raw/`, runs the loader for the
+  requested categories, validates the output against
+  `REQUIRED_COLUMNS`, writes the panel CSV.
+
+**Constraints**
+- Kilts data-use agreement forbids redistribution → raw archive stays
+  local under `data/dominicks-raw/` (added to `.gitignore` with the
+  anchored `/data/dominicks-raw/` pattern).
+- Output `data/dominicks.csv` already matched by the existing
+  `data/*.csv` gitignore rule.
+
+**Tests** (5 new; full unit suite 167 passed)
+- `tests/unit/test_dominicks_loader.py` — fixture-based round trip on
+  a hand-crafted yogurt + beer mini-archive: week→date anchor,
+  schema compliance, OK=0 row filtering, per-unit price derivation,
+  promo / `base_price` relationship, `PanelRow` pydantic validation,
+  unknown-category error, empty-archive error.
+
+**Acceptance**
+- `automl prepare-dominicks --help` lists every option. ✅
+- Output CSV passes `validate_panel`. ✅
+- Output CSV ingests cleanly via `automl run --data <csv>` (manually
+  verified on a downloaded yogurt + beer subset). ✅
+- Raw archive is gitignored; loader test fixtures live in
+  `tests/unit/test_dominicks_loader.py` (no real Dominick's bytes
+  committed). ✅
+
+### Workstream B — Published elasticity benchmarks (Hoch 1995 + Bijmolt 2005) ✅
+**Status:** complete. The validation agent now compares each PPG's
+recovered elasticity against the published category range from the
+two canonical CPG elasticity references, surfacing the result on
+every row of `validation_table.json` and as a 7th gate card on the
+client-facing validation page.
+
+**Backend**
+- `core/benchmarks/data/elasticity.json` — static table (25 categories):
+  - Hoch, Kim, Montgomery & Rossi (1995, JMR 32:1) — 18 Dominick's
+    categories with chain-level elasticities (beer −1.32, soft drinks
+    −3.18, cookies −3.96, cheese −3.27, …).
+  - Bijmolt, van Heerde & Pieters (2005, JMR 42:2) — grand mean −2.62
+    used as the global fallback; category-level rows for yogurt, salty
+    snacks, ice cream, coffee, paper products that Hoch didn't cover.
+  - Per-category band: `lo / mean / hi` (mean ± max(0.5, 0.3·|mean|),
+    approximating a ±2·SE envelope around the Hoch point estimates).
+  - Alias map ("Soda" → soft_drinks, "Juice" → bottled_juice, "Frozen
+    pizza" → frozen_entrees, …) so the synthetic generator's labels
+    and the Dominick's loader's labels both join cleanly.
+- `core/benchmarks/elasticity.py` — `lookup_category(category)` does an
+  exact / alias / substring match; `classify(elasticity, bench)`
+  returns one of `in_band` / `out_band_low` (less elastic than band) /
+  `out_band_high` (more elastic than band) / `no_benchmark` (NaN-safe).
+- `core/agents/validation.py` — loads `ppg_mapping_table.json` to
+  resolve PPG → category, augments every row of
+  `validation_table.json` with `benchmark_status`, `benchmark_mean`,
+  `benchmark_low`, `benchmark_high`, `benchmark_source`,
+  `benchmark_category`. Adds `n_in_benchmark` / `n_out_benchmark` /
+  `n_no_benchmark` / `benchmark_pass_rate` to `result.outputs`. The
+  existing sign / WAPE / CV / magnitude verdict is unchanged.
+
+**Frontend** (client-facing validation page, `web-client/`)
+- `web-client/lib/types.ts` — `PPGForestPoint` gains optional
+  `benchmark_low / benchmark_high / benchmark_mean / benchmark_source
+  / benchmark_status` fields.
+- `web-client/lib/mock.ts` — mock forest populates the new fields per
+  category; `buildValidation()` now emits a 7th gate card
+  ("Benchmark alignment") reporting in-band count vs total.
+- `web-client/components/charts/ConfidenceForest.tsx` — dashed
+  reference line at the Bijmolt grand mean (−2.62) with a label;
+  warning-coloured stroke on any bar whose elasticity sits outside
+  the published band; tooltip shows the published band alongside the
+  point estimate.
+- `web-client/app/validation/page.tsx` — header copy updated for the
+  7-gate count and the literature reference; forest subtitle now
+  calls out the benchmark band.
+
+**Tests** (15 new; full unit suite 167 passed)
+- `tests/unit/test_elasticity_benchmarks.py` — table loads with the
+  Bijmolt grand mean and a representative set of categories; exact
+  key lookup hits; alias lookup resolves Soda/Juice; unknown
+  category and `None` return `None`; `classify` returns
+  in_band / out_band_high / out_band_low / no_benchmark / NaN.
+- `tests/unit/test_validation_benchmark_check.py` —
+  `_load_ppg_categories` reads ppg_mapping_table.json correctly;
+  missing-mapping graceful empty; per-PPG classify hits expected
+  status (in_band yogurt, out_band beer at -10, no_benchmark
+  Antimatter); summary counts roll up correctly across PPGs.
+
+**Acceptance**
+- `validation_table.json` rows carry every `benchmark_*` field. ✅
+- `result.outputs` exposes `benchmark_pass_rate` without removing
+  any existing key (back-compat). ✅
+- Client validation page renders 7 gate cards (was 6). ✅
+- Forest chart shows the Bijmolt grand-mean reference line and
+  warning stroke on out-of-band PPGs. ✅
+- Web-client `tsc --noEmit` + `next build` clean. ✅
+- Full unit suite (167 tests) green. ✅
