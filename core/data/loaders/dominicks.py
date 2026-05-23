@@ -78,13 +78,16 @@ def _read_movement(path: Path) -> pd.DataFrame:
         path,
         usecols=lambda c: c.upper() in {"STORE", "UPC", "WEEK", "MOVE", "QTY", "PRICE", "SALE", "PROFIT", "OK"},
         dtype={"SALE": "string"},
+        encoding="latin-1",
     )
     df.columns = [c.upper() for c in df.columns]
     return df
 
 
 def _read_upc_dict(path: Path) -> pd.DataFrame:
-    df = pd.read_csv(path)
+    # Dominick's UPC dictionaries are ISO-8859 (SAS-export era); latin-1
+    # decodes every byte without raising.
+    df = pd.read_csv(path, encoding="latin-1")
     df.columns = [c.upper() for c in df.columns]
     keep = [c for c in ("UPC", "DESCRIP", "SIZE", "NITEM", "COM_CODE") if c in df.columns]
     return df[keep].copy()
