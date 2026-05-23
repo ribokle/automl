@@ -41,7 +41,11 @@ def build_features(panel: pd.DataFrame) -> pd.DataFrame:
     df["log_price"] = np.log(df["price"].clip(lower=0.01))
     df["log_base_price"] = np.log(df["base_price"].clip(lower=0.01))
     df["log_distribution_acv"] = np.log(df["distribution_acv"].clip(lower=0.01))
-    df["log_competitor_price"] = np.log(df["competitor_price"].clip(lower=0.01))
+    # Dominick's-style loaders don't ship a separate competitor series; fall
+    # back to parity with own price so log_price_gap collapses to 0 rather
+    # than poisoning the row with NaN (which dropna would zap below).
+    log_comp = np.log(df["competitor_price"].clip(lower=0.01))
+    df["log_competitor_price"] = log_comp.fillna(df["log_price"])
     df["log_price_gap"] = df["log_price"] - df["log_competitor_price"]
 
     by_ppg = df.groupby("ppg_id", group_keys=False)
