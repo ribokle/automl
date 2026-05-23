@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { getArtifact } from "@/lib/api";
+import { ChartPlayground } from "./playground/ChartPlayground";
 import { ACFPlot, type ACFData } from "./charts/ACFPlot";
 import { AnomalyTimeline, type AnomalyTimelineData } from "./charts/AnomalyTimeline";
 import { CorrHeatmap, type CorrData } from "./charts/CorrHeatmap";
@@ -155,6 +156,7 @@ const SECTIONS = [
   { id: "promo-calendar", label: "Promo calendar" },
   { id: "holiday", label: "Holiday lift" },
   { id: "cardinality", label: "Cardinality" },
+  { id: "playground", label: "Playground" },
 ] as const;
 
 function KPI({ label, value, hint }: { label: string; value: string | number; hint?: string }) {
@@ -608,6 +610,10 @@ export function AdvancedEDADashboard({ runId }: { runId: string }) {
           ) : (
             <p className="text-[11px] text-slate-500">No categorical columns to report.</p>
           )}
+        </Section>
+
+        <Section id="playground" title="Chart playground">
+          <ChartPlayground runId={runId} />
         </Section>
       </div>
     </div>

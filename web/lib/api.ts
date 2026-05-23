@@ -161,6 +161,43 @@ export async function getPPGSelection(runId: string): Promise<PPGSelectionRow[] 
   return res.json();
 }
 
+export async function getQuerySchema(): Promise<unknown> {
+  const res = await fetch(`${API_BASE}/runs/query/schema`, {
+    cache: "force-cache",
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error(`getQuerySchema failed: ${res.status}`);
+  return res.json();
+}
+
+export async function runQuery<T = unknown>(runId: string, spec: unknown): Promise<T> {
+  const res = await fetch(`${API_BASE}/runs/${runId}/query`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify(spec),
+  });
+  if (!res.ok) {
+    let detail = `${res.status}`;
+    try {
+      const body = (await res.json()) as { detail?: string };
+      if (body.detail) detail = body.detail;
+    } catch {
+      // not JSON
+    }
+    throw new Error(detail);
+  }
+  return res.json();
+}
+
+export async function distinctValues(runId: string, column: string): Promise<(string | number)[]> {
+  const res = await fetch(
+    `${API_BASE}/runs/${runId}/query/distinct?column=${encodeURIComponent(column)}`,
+    { cache: "no-store", headers: authHeaders() },
+  );
+  if (!res.ok) throw new Error(`distinctValues failed: ${res.status}`);
+  return res.json();
+}
+
 export async function getArtifact<T>(runId: string, name: string): Promise<T | null> {
   const res = await fetch(`${API_BASE}/artifacts/${runId}/${name}`, {
     cache: "no-store",

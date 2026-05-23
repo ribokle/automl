@@ -9,7 +9,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.deps import get_run_dir
-from api.routes import approvals, artifacts, events, runs, uploads
+from api.routes import approvals, artifacts, events, query, runs, uploads
 from core.config import get_settings
 
 log = logging.getLogger("api.main")
@@ -44,6 +44,7 @@ def create_app() -> FastAPI:
     app.include_router(uploads.router)
     app.include_router(artifacts.router)
     app.include_router(approvals.router)
+    app.include_router(query.router)
 
     @app.get("/health")
     def health() -> dict[str, str]:

@@ -1276,3 +1276,36 @@ never covered. Operator-facing dashboard at `/runs/[id]/eda`.
 - API + Next.js production server up: `GET /runs/<id>/eda` returns 200
   and the dashboard mounts; `GET /artifacts/<id>/advanced_eda_report.json`
   returns the report blob.
+
+### Chart playground ✅
+
+A new "Playground" anchor at the bottom of `/runs/[id]/eda` lets the
+operator build ad-hoc charts from the panel mart. Picks a chart type
+(trend / bar / grouped / stacked / scatter / heatmap / box / histogram
+/ pareto), adds dimensions + measures with per-measure aggregation,
+optionally filters, and renders the chart live with ECharts. Multi-axis
+trends auto-group measures by detected unit (count / dollars / share),
+with an optional per-measure axis override. Each chart-type button shows
+inline help describing required dim / measure counts; the Render button
+disables until requirements pass and surfaces a one-line missing-hint.
+
+- Backend `core/data/column_meta.py` is the source of truth for the
+  allow-list + per-column role / unit / default-aggregation; consumed by
+  `core/data/query.py` (Pydantic `QuerySpec` + parameterised SQL builder
+  + read-only executor) and exposed via the new `POST /runs/{id}/query`
+  + `GET /runs/{id}/query/distinct` + `GET /runs/query/schema` routes in
+  `api/routes/query.py`.
+- Frontend `web/components/playground/` (8 files): `chart_types.ts`
+  catalogue, picker primitives (`ChartTypePicker`, `DimensionPicker`,
+  `MeasurePicker`, `FilterBuilder`), `ChartRenderer` switching on chart
+  type, helpers for tidy → ECharts conversions, and `ChartPlayground`
+  orchestrating it all. Slots into `AdvancedEDADashboard.tsx` as the new
+  last `<Section />`.
+- Tests: `tests/unit/test_query_builder.py` (14 unit tests) +
+  `tests/unit/test_query_endpoint.py` (9 endpoint tests). Full suite 222
+  passed / 3 skipped / 0 regressions.
+- Verification: `tsc --noEmit` + `next build` clean; the EDA route
+  manifest size grew from 8.13 kB to 14.2 kB with the playground bundled.
+  Live smoke: query endpoint serves grouped aggregations with filters,
+  rejects unknown columns with structured 400s, and returns tidy JSON
+  the renderer consumes directly.
