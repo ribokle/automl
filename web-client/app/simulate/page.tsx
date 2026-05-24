@@ -2,8 +2,12 @@ import { loadClientPayload } from "@/lib/data";
 import { AppNav } from "@/components/shell/AppNav";
 import { SimulateClient } from "./SimulateClient";
 
-export default async function SimulatePage() {
-  const payload = await loadClientPayload();
+export default async function SimulatePage({
+  searchParams,
+}: {
+  searchParams: { runId?: string };
+}) {
+  const payload = await loadClientPayload(searchParams.runId);
 
   return (
     <>

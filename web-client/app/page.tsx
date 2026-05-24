@@ -6,8 +6,12 @@ import { AppNav } from "@/components/shell/AppNav";
 import { AnchorNumber } from "@/components/shell/AnchorNumber";
 import { Button } from "@/components/ui/button";
 
-export default async function HomePage() {
-  const payload = await loadClientPayload();
+export default async function HomePage({
+  searchParams,
+}: {
+  searchParams: { runId?: string };
+}) {
+  const payload = await loadClientPayload(searchParams.runId);
   const repriced = payload.recommendations.filter((r) => Math.abs(r.delta_pct) > 0.005).length;
 
   return (

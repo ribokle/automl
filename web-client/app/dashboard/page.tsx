@@ -9,8 +9,12 @@ import { RecCard } from "@/components/shell/RecCard";
 import { RevenueChart } from "@/components/charts/RevenueChart";
 import { Button } from "@/components/ui/button";
 
-export default async function DashboardPage() {
-  const payload = await loadClientPayload();
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: { runId?: string };
+}) {
+  const payload = await loadClientPayload(searchParams.runId);
   const top = [...payload.recommendations].sort(
     (a, b) => b.revenue_lift_usd - a.revenue_lift_usd,
   );

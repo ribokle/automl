@@ -15,10 +15,9 @@ interface Props {
   runId: string;
 }
 
-const TABS = [
+const INTERNAL_TABS = [
   { label: "Timeline", href: (id: string) => `/runs/${id}` },
   { label: "Advanced EDA", href: (id: string) => `/runs/${id}/eda` },
-  { label: "Business view", href: (id: string) => `/runs/${id}/business` },
 ] as const;
 
 export function RunSubnav({ runId }: Props) {
@@ -26,7 +25,7 @@ export function RunSubnav({ runId }: Props) {
 
   return (
     <nav className="flex flex-wrap items-center gap-1 border-b border-slate-800 pb-0">
-      {TABS.map((tab) => {
+      {INTERNAL_TABS.map((tab) => {
         const href = tab.href(runId);
         const isActive = pathname === href;
         return (
@@ -43,6 +42,13 @@ export function RunSubnav({ runId }: Props) {
           </Link>
         );
       })}
+      {/* Cross-zone hard navigation to the business client */}
+      <a
+        href={`/business/dashboard?runId=${runId}`}
+        className="-mb-px border-b-2 border-transparent px-4 py-2 text-xs font-medium text-slate-400 transition-colors hover:border-slate-600 hover:text-slate-200"
+      >
+        Business view ↗
+      </a>
     </nav>
   );
 }

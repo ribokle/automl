@@ -1,8 +1,12 @@
 import { loadClientPayload } from "@/lib/data";
 import { AppNav } from "@/components/shell/AppNav";
 
-export default async function MethodologyPage() {
-  const payload = await loadClientPayload();
+export default async function MethodologyPage({
+  searchParams,
+}: {
+  searchParams: { runId?: string };
+}) {
+  const payload = await loadClientPayload(searchParams.runId);
 
   return (
     <>

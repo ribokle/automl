@@ -20,8 +20,12 @@ const STATUS_BADGE: Record<ValidationCheck["status"], string> = {
   fail: "border-negative/30 bg-negative/10 text-negative",
 };
 
-export default async function ValidationPage() {
-  const payload = await loadClientPayload();
+export default async function ValidationPage({
+  searchParams,
+}: {
+  searchParams: { runId?: string };
+}) {
+  const payload = await loadClientPayload(searchParams.runId);
   const passes = payload.validation.filter((v) => v.status === "pass").length;
   const total = payload.validation.length;
 

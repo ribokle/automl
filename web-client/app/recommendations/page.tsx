@@ -5,8 +5,12 @@ import { Card } from "@/components/shell/Card";
 import { RecCard } from "@/components/shell/RecCard";
 import { fmtUsdCompact } from "@/lib/format";
 
-export default async function RecommendationsPage() {
-  const payload = await loadClientPayload();
+export default async function RecommendationsPage({
+  searchParams,
+}: {
+  searchParams: { runId?: string };
+}) {
+  const payload = await loadClientPayload(searchParams.runId);
   const recs = [...payload.recommendations].sort(
     (a, b) => b.revenue_lift_usd - a.revenue_lift_usd,
   );
