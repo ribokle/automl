@@ -171,6 +171,21 @@ class ModelingAgent(Agent):
         controls = _load_controls(run_dir)
         has_grain_unit = "grain_unit" in feats.columns
 
+        # When the features frame's ppg_id column carries brand /
+        # category labels (non-PPG grain), the ppg_selection eligibility
+        # list is keyed by PPG_AUTO_xx and won't match anything here.
+        # Fall back to every distinct unit observed in the features
+        # frame; the per-cell gates downstream filter out the
+        # under-sized ones.
+        feature_ppg_ids = set(feats["ppg_id"].astype(str).unique())
+        if eligible and not (set(eligible) & feature_ppg_ids):
+            self.log.info(
+                "modeling: ppg_selection ids don't match features grain — "
+                "using all %d units from features.csv",
+                len(feature_ppg_ids),
+            )
+            eligible = sorted(feature_ppg_ids)
+
         # Cells the modelling loop will visit (after restricting to eligible
         # PPGs). At chain grain this is just len(eligible); at store grain
         # it's the number of distinct (ppg_id, grain_unit) keys actually

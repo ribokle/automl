@@ -8,6 +8,7 @@ export async function createRun(
   dataPath: string,
   gatesEnabled = false,
   agentMode = true,
+  grainGateRequired = false,
 ): Promise<RunSummary> {
   const res = await fetch(`${API_BASE}/runs`, {
     method: "POST",
@@ -16,6 +17,7 @@ export async function createRun(
       data_path: dataPath,
       gates_enabled: gatesEnabled,
       agent_mode: agentMode,
+      grain_gate_required: grainGateRequired,
     }),
   });
   if (!res.ok) throw new Error(`createRun failed: ${res.status}`);
@@ -112,11 +114,29 @@ export const eventsUrl = (id: string) => `${API_BASE}/runs/${id}/events`;
 export const artifactUrl = (runId: string, name: string) =>
   `${API_BASE}/artifacts/${runId}/${name}`;
 
-export async function approveAgent(runId: string, agent: string): Promise<void> {
-  const res = await fetch(`${API_BASE}/runs/${runId}/approve?agent=${encodeURIComponent(agent)}`, {
+export interface ApprovePayload {
+  modelling_grain?: string;
+  comparison_grains?: string[];
+}
+
+export async function approveAgent(
+  runId: string,
+  agent: string,
+  payload?: ApprovePayload,
+): Promise<void> {
+  const init: RequestInit = {
     method: "POST",
-    headers: authHeaders(),
-  });
+    headers: payload
+      ? { "Content-Type": "application/json", ...authHeaders() }
+      : authHeaders(),
+  };
+  if (payload) {
+    init.body = JSON.stringify(payload);
+  }
+  const res = await fetch(
+    `${API_BASE}/runs/${runId}/approve?agent=${encodeURIComponent(agent)}`,
+    init,
+  );
   if (!res.ok) throw new Error(`approve failed: ${res.status}`);
 }
 

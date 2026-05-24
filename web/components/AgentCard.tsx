@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   AGENT_META,
   LLM_AGENTS,
@@ -10,12 +10,13 @@ import {
   summariseOutputs,
   summariseTool,
 } from "@/lib/agent-meta";
-import { approveAgent, artifactUrl, rejectAgent } from "@/lib/api";
+import { approveAgent, artifactUrl, getArtifact, rejectAgent } from "@/lib/api";
 import type { AgentName, AgentState, AgentStatus, RunEvent } from "@/lib/types";
 import { STAGE_FAQS } from "@/lib/agent-faqs";
 import { AgentFAQ } from "./AgentFAQ";
 import { AgentThinking } from "./AgentThinking";
 import { AgentVisuals } from "./AgentVisuals";
+import { GrainSelector, type GrainOptionsBlob } from "./GrainSelector";
 
 interface Props {
   runId: string;
@@ -63,6 +64,28 @@ export function AgentCard({ runId, agent, index, status, events, agentState, isL
   }
   async function handleReject() {
     await rejectAgent(runId, agent);
+  }
+
+  // The post-ingestion grain selector only fires on the ppg_mapping
+  // gate, and only if the backend wrote grain_options.json. We fetch
+  // it lazily once the gate becomes active and stash it for the
+  // selector below.
+  const [grainOptions, setGrainOptions] = useState<GrainOptionsBlob | null>(null);
+  useEffect(() => {
+    if (agent !== "ppg_mapping" || status !== "awaiting_approval") return;
+    let cancelled = false;
+    getArtifact<GrainOptionsBlob>(runId, "grain_options.json")
+      .then((blob) => {
+        if (!cancelled) setGrainOptions(blob);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [runId, agent, status]);
+
+  async function submitGrainAndApprove(payload: { modelling_grain: string; comparison_grains: string[] }) {
+    await approveAgent(runId, agent, payload);
   }
 
   return (
@@ -186,22 +209,46 @@ export function AgentCard({ runId, agent, index, status, events, agentState, isL
         )}
 
         {status === "awaiting_approval" && !rerunning && (
-          <div className="flex items-center justify-between gap-2 border-t border-purple-500/30 bg-purple-500/5 px-4 py-2">
-            <span className="text-xs text-purple-200">Approval required to proceed</span>
-            <div className="flex gap-2">
-              <button
-                onClick={handleApprove}
-                className="rounded bg-emerald-500/20 px-3 py-1 text-xs font-medium text-emerald-200 hover:bg-emerald-500/30"
-              >
-                Approve
-              </button>
-              <button
-                onClick={handleReject}
-                className="rounded bg-rose-500/20 px-3 py-1 text-xs font-medium text-rose-200 hover:bg-rose-500/30"
-              >
-                Reject
-              </button>
-            </div>
+          <div className="border-t border-purple-500/30 bg-purple-500/5 px-4 py-3">
+            {agent === "ppg_mapping" && grainOptions ? (
+              <div className="space-y-3">
+                <p className="text-xs text-purple-200">
+                  PPG clusters look good? Pick the modelling grain below
+                  and approve to continue.
+                </p>
+                <GrainSelector
+                  options={grainOptions}
+                  onSubmit={submitGrainAndApprove}
+                  submitLabel="Approve & Configure"
+                />
+                <div className="flex justify-end">
+                  <button
+                    onClick={handleReject}
+                    className="rounded bg-rose-500/20 px-3 py-1 text-xs font-medium text-rose-200 hover:bg-rose-500/30"
+                  >
+                    Reject
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs text-purple-200">Approval required to proceed</span>
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleApprove}
+                    className="rounded bg-emerald-500/20 px-3 py-1 text-xs font-medium text-emerald-200 hover:bg-emerald-500/30"
+                  >
+                    Approve
+                  </button>
+                  <button
+                    onClick={handleReject}
+                    className="rounded bg-rose-500/20 px-3 py-1 text-xs font-medium text-rose-200 hover:bg-rose-500/30"
+                  >
+                    Reject
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

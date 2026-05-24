@@ -23,6 +23,11 @@ from core.data.charts import (
     ppg_scatter_facet,
     ppg_scatter_tier,
 )
+from core.features.grain_options import (
+    _query_shape as query_panel_shape,
+    list_grain_options,
+    to_payload as grain_options_payload,
+)
 from core.orchestrator.state import AgentResult, ArtifactRef, RunState
 from core.ppg.cluster import ClusterParams, apply_mapping_to_panel, cluster_ppgs
 from core.ppg.features import aggregate_sku_features
@@ -187,6 +192,27 @@ class PPGMappingAgent(Agent):
                     name=chart_name,
                 )
             )
+
+        # Build the modelling-grain decision-support artifact while we
+        # still hold the warehouse, so the operator sees grain
+        # combinations + expected cell counts in the approval panel.
+        try:
+            shape = query_panel_shape(duckdb_path)
+            grain_opts = list_grain_options(duckdb_path)
+            grain_path = run_dir / "grain_options.json"
+            grain_path.write_text(
+                json.dumps(grain_options_payload(grain_opts, shape), indent=2)
+            )
+            result.artifacts.append(
+                ArtifactRef(
+                    path=str(grain_path),
+                    mime="application/json",
+                    agent=self.name,
+                    name=grain_path.name,
+                )
+            )
+        except (RuntimeError, ValueError, OSError) as exc:
+            self.log.warning("ppg_mapping: failed to write grain_options.json: %s", exc)
 
         n_ppgs = int(assignments["ppg_id"].nunique())
         flagged = sum(1 for r in rationale_lookup.values() if r.get("flag"))

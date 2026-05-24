@@ -108,6 +108,23 @@ async def _wait_for_gate(run: RunState, agent_name: str) -> bool:
             continue
 
         approved = bool(state.approved)
+        # Approval may carry a top-level config payload (e.g. the grain
+        # selector at ppg_mapping). Merge into run.options BEFORE
+        # downstream agents start so feature_engineering / modelling
+        # see the right grain.
+        if approved and state.approve_payload:
+            payload = state.approve_payload
+            for key, value in payload.items():
+                run.options[key] = value
+            await bus.publish(
+                run.id,
+                run.run_dir,
+                {
+                    "type": "approval_payload",
+                    "agent": agent_name,
+                    "options": payload,
+                },
+            )
         run.agents[agent_name].status = prior_status if approved else AgentStatus.failed
         run.status = RunStatus.running if approved else RunStatus.failed
         run.save()
@@ -119,12 +136,23 @@ async def _wait_for_gate(run: RunState, agent_name: str) -> bool:
         return approved
 
 
-async def execute(run: RunState, gates_enabled: bool = True, agent_mode: bool = True) -> RunState:
+async def execute(
+    run: RunState,
+    gates_enabled: bool = True,
+    agent_mode: bool = True,
+    grain_gate_required: bool = False,
+) -> RunState:
     run.status = RunStatus.running
     if gates_enabled:
         run.gates = dict(DEFAULT_GATES)
     else:
         run.gates = {}
+    # The grain-selector flow always pauses at ppg_mapping regardless of
+    # gates_enabled, so the UI can render the selector even on
+    # otherwise-headless runs.
+    if grain_gate_required:
+        run.gates["ppg_mapping"] = True
+        run.options = {**run.options, "grain_gate_required": True}
     run.options = {**run.options, "agent_mode": agent_mode}
     run.save()
 
@@ -167,9 +195,138 @@ async def execute(run: RunState, gates_enabled: bool = True, agent_mode: bool = 
                 gate_registry.drop(run.id)
                 return run
 
+    # Multi-grain comparison fan-out. Picks up any extra grains the
+    # operator selected at the ppg_mapping gate and re-runs ONLY
+    # feature_engineering + modeling for each so downstream
+    # (decomposition / validation / optimisation) stays locked to the
+    # primary grain. Per-grain artifacts get a double-underscore
+    # suffix so they don't collide with the primary outputs.
+    if run.status != RunStatus.failed:
+        await _run_comparison_grains(run, agent_mode=agent_mode)
+
     if run.status != RunStatus.failed:
         run.status = RunStatus.completed
     run.save()
     await bus.publish(run.id, run.run_dir, {"type": "run_finished", "status": run.status.value})
     gate_registry.drop(run.id)
     return run
+
+
+_COMPARISON_SNAPSHOT_FILES = (
+    "modeling_results.json",
+    "elasticity_per_ppg.json",
+    "elasticity_per_ppg_pooled.json",
+    "modeling_preflight.json",
+)
+
+
+async def _run_comparison_grains(run: RunState, *, agent_mode: bool) -> None:
+    """For each grain in ``run.options["comparison_grains"]``, run a
+    fresh feature_engineering + modeling pass and write per-grain
+    artifacts (``modeling_results__<grain>.json``,
+    ``elasticity_per_ppg__<grain>.json``, ...).
+
+    Snapshots the primary modelling outputs before the loop and
+    restores them at the end so the primary artifacts stay at their
+    canonical filenames (downstream agents and the UI's default tab
+    both consume those).
+
+    Failures here are non-fatal: a comparison miss shouldn't tear down
+    a healthy primary run. The event stream surfaces them so the UI
+    can show which comparisons completed.
+    """
+    import shutil
+    from pathlib import Path
+
+    grains = run.options.get("comparison_grains") or []
+    if not grains:
+        return
+
+    primary_grain = run.options.get("modelling_grain") or "ppg_week"
+    comparisons = [g for g in grains if g != primary_grain]
+    if not comparisons:
+        return
+
+    run_dir = Path(run.run_dir)
+    # Snapshot the primary modelling artifacts BEFORE the loop so we
+    # can restore them once comparisons finish overwriting the
+    # canonical filenames. Also snapshot the FE / modelling AgentResult
+    # objects (outputs / artifacts / reasoning) — without this the
+    # last-comparison's status would shadow the primary's in
+    # state.json.
+    snapshots: dict[Path, Path] = {}
+    for fname in _COMPARISON_SNAPSHOT_FILES:
+        src = run_dir / fname
+        if src.exists():
+            backup = src.with_name(f"{src.stem}.__primary_backup__{src.suffix}")
+            shutil.copy2(src, backup)
+            snapshots[src] = backup
+    primary_results = {
+        name: run.agents[name].model_copy(deep=True)
+        for name in ("feature_engineering", "modeling")
+        if name in run.agents
+    }
+
+    await bus.publish(
+        run.id,
+        run.run_dir,
+        {
+            "type": "comparison_started",
+            "grains": list(comparisons),
+            "primary": primary_grain,
+        },
+    )
+
+    for grain in comparisons:
+        await bus.publish(
+            run.id,
+            run.run_dir,
+            {"type": "comparison_progress", "grain": grain, "stage": "feature_engineering"},
+        )
+        # Swap the primary modelling_grain into options just for this
+        # pass; the FE / modelling agents read it from there.
+        run.options["modelling_grain"] = grain
+        run.save()
+        try:
+            await _build_agent("feature_engineering", agent_mode=agent_mode).run(run)
+            await bus.publish(
+                run.id,
+                run.run_dir,
+                {"type": "comparison_progress", "grain": grain, "stage": "modeling"},
+            )
+            await _build_agent("modeling", agent_mode=agent_mode).run(run)
+        except Exception as exc:  # noqa: BLE001
+            await bus.publish(
+                run.id,
+                run.run_dir,
+                {
+                    "type": "comparison_finished",
+                    "grain": grain,
+                    "status": "failed",
+                    "error": str(exc),
+                },
+            )
+            continue
+
+        # Capture the comparison outputs under grain-suffixed names so
+        # the next iteration can overwrite the canonical filenames freely.
+        for fname in _COMPARISON_SNAPSHOT_FILES:
+            src = run_dir / fname
+            if not src.exists():
+                continue
+            dst = run_dir / f"{src.stem}__{grain}{src.suffix}"
+            src.rename(dst)
+        await bus.publish(
+            run.id,
+            run.run_dir,
+            {"type": "comparison_finished", "grain": grain, "status": "done"},
+        )
+
+    # Restore the primary outputs and AgentResults.
+    for canonical, backup in snapshots.items():
+        if backup.exists():
+            shutil.move(str(backup), str(canonical))
+    for name, primary in primary_results.items():
+        run.agents[name] = primary
+    run.options["modelling_grain"] = primary_grain
+    run.save()

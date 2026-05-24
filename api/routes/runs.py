@@ -47,6 +47,8 @@ async def create_run(
     options: dict[str, Any] = {"agent_mode": req.agent_mode}
     if req.label:
         options["label"] = req.label
+    if req.grain_gate_required:
+        options["grain_gate_required"] = True
     state = RunState.new(
         data_path=str(data_path.resolve()),
         run_dir=run_dir_base / "auto",
@@ -59,13 +61,29 @@ async def create_run(
     state.save()
     _RUNS[state.id] = state
 
-    background.add_task(_run_in_background, state, req.gates_enabled, req.agent_mode)
+    background.add_task(
+        _run_in_background,
+        state,
+        req.gates_enabled,
+        req.agent_mode,
+        req.grain_gate_required,
+    )
 
     return _summary(state)
 
 
-async def _run_in_background(state: RunState, gates_enabled: bool, agent_mode: bool) -> None:
-    await execute(state, gates_enabled=gates_enabled, agent_mode=agent_mode)
+async def _run_in_background(
+    state: RunState,
+    gates_enabled: bool,
+    agent_mode: bool,
+    grain_gate_required: bool,
+) -> None:
+    await execute(
+        state,
+        gates_enabled=gates_enabled,
+        agent_mode=agent_mode,
+        grain_gate_required=grain_gate_required,
+    )
 
 
 @router.get("", response_model=list[RunSummary])

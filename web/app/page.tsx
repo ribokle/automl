@@ -27,6 +27,11 @@ export default function Home() {
   const [syntheticPath, setSyntheticPath] = useState("data/synthetic.csv");
   const [gatesEnabled, setGatesEnabled] = useState(false);
   const [agentMode, setAgentMode] = useState(true);
+  // UI-triggered runs always pause after ppg_mapping so the operator
+  // gets to pick the modelling grain (chain × PPG, store × brand, ...)
+  // once they can see how many stores / brands / categories the panel
+  // carries. Independent of the full DEFAULT_GATES set.
+  const [grainGateRequired, setGrainGateRequired] = useState(true);
 
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
@@ -77,7 +82,7 @@ export default function Home() {
         dataPath = syntheticPath;
       }
       setStatus("Starting run…");
-      const run = await createRun(dataPath, gatesEnabled, agentMode);
+      const run = await createRun(dataPath, gatesEnabled, agentMode, grainGateRequired);
       router.push(`/runs/${run.id}`);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
@@ -206,6 +211,20 @@ export default function Home() {
             <span>
               <span className="font-medium text-slate-200">Approval gates</span> — pause
               after PPG mapping, modeling, and optimization for manual review.
+            </span>
+          </label>
+          <label className="flex items-start gap-2 text-xs text-slate-300">
+            <input
+              type="checkbox"
+              checked={grainGateRequired}
+              onChange={(e) => setGrainGateRequired(e.target.checked)}
+              className="mt-0.5 h-3.5 w-3.5 accent-sky-400"
+            />
+            <span>
+              <span className="font-medium text-slate-200">Pick modelling grain after ingestion</span> —
+              once ingestion + PPG mapping land, the pipeline pauses so you can
+              choose chain × PPG, store × brand, etc. and (optionally) queue
+              comparison grains side-by-side.
             </span>
           </label>
         </div>

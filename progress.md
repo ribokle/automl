@@ -1391,3 +1391,87 @@ Tests / verification:
   with ``|ε| > 8``. PPG_AUTO_31 LightGBM ε=-10.88 candidate now
   retained in ``attempts[]`` but de-winnered in favour of an in-band
   OLS alternative.
+
+### Grain selector + multi-grain comparison ✅
+
+The CLI-only ``--modelling-grain`` flag became a first-class UI
+control: every UI-triggered run now pauses after PPG mapping and
+shows a 3 × 2 grain grid (PPG / Category / Brand × chain / store)
+with expected cell counts + recommendation badges + greyed-out
+unavailable cells. Operators can also queue **comparison grains**
+that fan out a modelling-only pass after the primary pipeline
+finishes, so brand-elasticities and PPG-elasticities can be
+compared on the same dataset.
+
+- Backend grain catalogue gained 3 new members (``brand_week``,
+  ``store_brand_week``, ``category_week``) for 6 total. SQL
+  branches in ``core/features/eda.py:aggregate_features`` mirror the
+  existing ``store_category_week`` pattern (``ppg_id`` carries the
+  brand / category label, ``grain_unit`` is ``"chain"`` or
+  ``store_id``).
+- ``core/features/grain_options.py`` (new) builds the
+  decision-support catalogue: per-grain expected cell count,
+  ``available`` flag (rejects single-brand / single-store /
+  short-panel cases), ``recommended`` flag (cell count in the
+  25–500 sweet spot, at most one per spatial axis), and a
+  one-line ``reason``. ``ppg_mapping`` writes a
+  ``grain_options.json`` artifact via this helper.
+- ``POST /runs/{id}/approve`` accepts an optional ``ApprovePayload``
+  body (``modelling_grain`` / ``comparison_grains``), validated
+  against ``ModellingGrain`` with ``extra="forbid"`` for typo
+  protection. Bodyless calls keep working — backward compatible.
+- ``GateState`` gained ``approve_payload``; the runner consumes it
+  in ``_wait_for_gate`` and merges into ``run.options`` before
+  downstream agents resume.
+- ``CreateRunRequest.grain_gate_required`` (default ``False`` in
+  the API schema; UI passes ``True``) force-enables the
+  ``ppg_mapping`` gate regardless of ``gates_enabled`` so the UI
+  always sees the selector. Headless CLI runs blow through with
+  whatever ``--modelling-grain`` was passed.
+- Multi-grain fan-out lives in
+  ``core/orchestrator/runner.py:_run_comparison_grains``: after
+  ``insights`` finishes, the primary modelling artifacts are
+  snapshotted, each comparison grain re-runs
+  ``feature_engineering`` + ``modeling`` (overwriting canonical
+  filenames), the comparison outputs are renamed to
+  ``modeling_results__<grain>.json`` /
+  ``elasticity_per_ppg__<grain>.json``, and the primary
+  artifacts + ``AgentResult`` objects are restored. Failures are
+  non-fatal — a broken comparison can't tear down a healthy
+  primary run.
+- Modelling agent gracefully handles eligibility-id mismatch when
+  the comparison grain uses brand / category labels instead of
+  PPG_AUTO ids: falls back to every distinct unit in the features
+  frame (logged at INFO).
+- Frontend ``GrainSelector.tsx`` renders the grid in the
+  ``ppg_mapping`` approval panel; ``AgentCard.tsx`` lazily
+  fetches ``grain_options.json`` when the gate becomes active.
+  ``approveAgent`` extended with optional payload. New-run form
+  defaults the "Pick modelling grain after ingestion" checkbox
+  to on. ``ModelingVisuals`` reads the run's
+  ``modelling_grain`` + ``comparison_grains`` from
+  ``getRun(runId)`` and renders a chip-row above the candidates
+  table that toggles which modelling artifact is loaded.
+
+Tests / verification:
+
+- ``tests/unit/test_grain_options.py`` (6 tests) — catalogue
+  shape + availability flags + recommendation sweet spot.
+- ``tests/unit/test_approve_payload.py`` (6 tests) — bodyless
+  approve, payload validation, enum rejection, extra-field
+  rejection, dedupe.
+- ``tests/unit/test_grain_aggregation.py`` (extended) —
+  brand_week / category_week / store_brand_week SQL branches.
+- ``tests/integration/test_multi_grain_comparison.py`` — primary
+  ``ppg_week`` + comparison ``brand_week`` round-trip; primary
+  artifacts restored at canonical filenames after the loop, no
+  backup-file leftovers. Full suite 253 passed / 3 skipped.
+- End-to-end Dominick's toothpaste at ``--modelling-grain
+  brand_week``: 54 brand units (5 skipped for insufficient rows,
+  6 for price variance), 40/54 correct elasticity sign, median
+  elasticity -1.30. Brand-grain ``grain_options.json`` correctly
+  reports 93 stores · 57 brands · 1 category · 398 weeks; flags
+  category grains unavailable (single-category panel) and
+  recommends ``ppg_week`` (61 cells, in sweet spot).
+- ``tsc --noEmit`` clean; ``next build`` clean; ``/runs/[id]``
+  bundle 42.2 kB (was 40.5 kB before the selector).

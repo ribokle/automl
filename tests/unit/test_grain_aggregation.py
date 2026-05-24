@@ -87,6 +87,66 @@ def test_aggregate_features_store_category_week(panel_db: Path) -> None:
     assert set(df["ppg_id"].unique()) == {"test_cat"}
 
 
+def test_aggregate_features_category_week(panel_db: Path) -> None:
+    df = aggregate_features(panel_db, grain="category_week")
+    # 1 category x 10 weeks
+    assert len(df) == 10
+    assert set(df["grain_unit"].unique()) == {"chain"}
+    assert set(df["ppg_id"].unique()) == {"test_cat"}
+
+
+def test_aggregate_features_brand_week(tmp_path: Path) -> None:
+    # Seed a fresh warehouse with a brand column populated so the
+    # brand-grain SQL has something to group on.
+    import pandas as pd
+    import duckdb
+    rows: list[dict] = []
+    weeks = pd.date_range("2024-01-01", periods=10, freq="W-MON")
+    for store in ("s1", "s2"):
+        for brand in ("acme", "globex"):
+            for w in weeks:
+                rows.append(
+                    {
+                        "store_id": store,
+                        "ppg_id": f"{brand}_ppg",
+                        "category": "cat",
+                        "brand": brand,
+                        "sku": f"{brand}_x",
+                        "week_start": w.date(),
+                        "units": 50,
+                        "price": 4.0,
+                        "base_price": 4.0,
+                        "discount_depth": 0.0,
+                        "tpr_flag": 0,
+                        "display_flag": 0,
+                        "feature_flag": 0,
+                        "distribution_acv": 100.0,
+                        "competitor_price": 4.0,
+                        "holiday": None,
+                    }
+                )
+    df = pd.DataFrame(rows)
+    db = tmp_path / "warehouse.duckdb"
+    con = duckdb.connect(str(db))
+    try:
+        con.register("panel_df", df)
+        con.execute("CREATE SCHEMA IF NOT EXISTS main")
+        con.execute("CREATE TABLE main.panel AS SELECT * FROM panel_df")
+    finally:
+        con.close()
+
+    out = aggregate_features(db, grain="brand_week")
+    # 2 brands x 10 weeks; grain_unit = "chain"
+    assert len(out) == 20
+    assert set(out["grain_unit"].unique()) == {"chain"}
+    assert set(out["ppg_id"].unique()) == {"acme", "globex"}
+
+    store_out = aggregate_features(db, grain="store_brand_week")
+    # 2 stores x 2 brands x 10 weeks
+    assert len(store_out) == 40
+    assert set(store_out["grain_unit"].unique()) == {"s1", "s2"}
+
+
 def test_aggregate_features_rejects_unknown_grain(panel_db: Path) -> None:
     with pytest.raises(ValueError, match="unsupported grain"):
         aggregate_features(panel_db, grain="bogus")

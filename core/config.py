@@ -27,19 +27,28 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 class ModellingGrain(str, Enum):
     """Aggregation grain the modelling agent fits demand models at.
 
-    - ``ppg_week``: collapse the store dimension by quantity-weighting price;
-      one model per PPG (current default; what every existing test expects).
-    - ``store_ppg_week``: Hoch-style — one model per (store, PPG) cell.
-      Downstream agents see results pooled back to PPG via inverse-variance
-      shrinkage; per-store rows are surfaced in the UI for drill-down.
-    - ``store_category_week``: closest to Hoch (1995)'s actual paper grain
-      (one model per store × category). Useful when PPG clusters split a
-      category into too-small cells.
+    Two-axis catalogue: the spatial axis is chain vs store, and the
+    product axis is PPG vs category vs brand. Six combinations total.
+
+    - ``ppg_week``: chain × PPG × week. Default; current behaviour.
+    - ``store_ppg_week``: store × PPG × week. Hoch-style per-store fits.
+    - ``category_week``: chain × category × week.
+    - ``store_category_week``: store × category × week. Hoch (1995) grain.
+    - ``brand_week``: chain × brand × week.
+    - ``store_brand_week``: store × brand × week.
+
+    At non-PPG grains, the engineered ``ppg_id`` column carries the
+    brand or category label (not a PPG_AUTO_xx id) — downstream agents
+    treat the string identifier opaquely and don't care which axis it
+    represents.
     """
 
     PPG_WEEK = "ppg_week"
     STORE_PPG_WEEK = "store_ppg_week"
+    CATEGORY_WEEK = "category_week"
     STORE_CATEGORY_WEEK = "store_category_week"
+    BRAND_WEEK = "brand_week"
+    STORE_BRAND_WEEK = "store_brand_week"
 
 
 class ValidationThresholds(BaseModel):

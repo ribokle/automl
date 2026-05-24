@@ -41,6 +41,11 @@ class GateState:
     event: asyncio.Event = field(default_factory=asyncio.Event)
     approved: bool | None = None  # None=pending, True=approved, False=rejected
     rerun_payload: dict[str, Any] | None = None
+    # Approval-time payload (e.g. ``{"modelling_grain": "store_ppg_week",
+    # "comparison_grains": ["brand_week"]}`` from the ppg_mapping gate).
+    # The runner reads this after the wait returns and merges it into
+    # ``run.options`` BEFORE downstream agents run.
+    approve_payload: dict[str, Any] | None = None
 
 
 class GateRegistry:
@@ -53,9 +58,16 @@ class GateRegistry:
             self._gates[key] = GateState()
         return self._gates[key]
 
-    def approve(self, run_id: str, agent: str) -> bool:
+    def approve(self, run_id: str, agent: str, payload: dict[str, Any] | None = None) -> bool:
+        """Approve the gate, optionally carrying a config payload.
+
+        The payload is consumed by the runner just before resuming the
+        DAG — see ``_wait_for_gate`` for the merge into ``run.options``.
+        """
         state = self.get(run_id, agent)
         state.approved = True
+        if payload:
+            state.approve_payload = dict(payload)
         state.event.set()
         return True
 
@@ -92,6 +104,7 @@ class GateRegistry:
         state = self.get(run_id, agent)
         state.event.clear()
         state.rerun_payload = None
+        state.approve_payload = None
         state.approved = None
 
     def drop(self, run_id: str) -> None:

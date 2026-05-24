@@ -183,9 +183,73 @@ def aggregate_features(
             GROUP BY 1, 2, 3
             ORDER BY 1, 2, 3
         """
+    elif grain == "category_week":
+        sql = f"""
+            SELECT
+              'chain' AS grain_unit,
+              category AS ppg_id,
+              week_start,
+              SUM(units) AS units,
+              SUM(units * price) / NULLIF(SUM(units), 0) AS price,
+              SUM(units * base_price) / NULLIF(SUM(units), 0) AS base_price,
+              AVG(discount_depth) AS discount_depth,
+              AVG(tpr_flag::DOUBLE) AS tpr_share,
+              AVG(display_flag::DOUBLE) AS display_share,
+              AVG(feature_flag::DOUBLE) AS feature_share,
+              AVG(distribution_acv) AS distribution_acv,
+              AVG(competitor_price) AS competitor_price,
+              MAX(CASE WHEN holiday IS NULL OR holiday = '' THEN 0 ELSE 1 END) AS is_holiday_week
+            FROM {table}
+            WHERE category IS NOT NULL
+            GROUP BY 1, 2, 3
+            ORDER BY 2, 3
+        """
+    elif grain == "brand_week":
+        sql = f"""
+            SELECT
+              'chain' AS grain_unit,
+              brand AS ppg_id,
+              week_start,
+              SUM(units) AS units,
+              SUM(units * price) / NULLIF(SUM(units), 0) AS price,
+              SUM(units * base_price) / NULLIF(SUM(units), 0) AS base_price,
+              AVG(discount_depth) AS discount_depth,
+              AVG(tpr_flag::DOUBLE) AS tpr_share,
+              AVG(display_flag::DOUBLE) AS display_share,
+              AVG(feature_flag::DOUBLE) AS feature_share,
+              AVG(distribution_acv) AS distribution_acv,
+              AVG(competitor_price) AS competitor_price,
+              MAX(CASE WHEN holiday IS NULL OR holiday = '' THEN 0 ELSE 1 END) AS is_holiday_week
+            FROM {table}
+            WHERE brand IS NOT NULL
+            GROUP BY 1, 2, 3
+            ORDER BY 2, 3
+        """
+    elif grain == "store_brand_week":
+        sql = f"""
+            SELECT
+              store_id AS grain_unit,
+              brand AS ppg_id,
+              week_start,
+              SUM(units) AS units,
+              SUM(units * price) / NULLIF(SUM(units), 0) AS price,
+              SUM(units * base_price) / NULLIF(SUM(units), 0) AS base_price,
+              AVG(discount_depth) AS discount_depth,
+              AVG(tpr_flag::DOUBLE) AS tpr_share,
+              AVG(display_flag::DOUBLE) AS display_share,
+              AVG(feature_flag::DOUBLE) AS feature_share,
+              AVG(distribution_acv) AS distribution_acv,
+              AVG(competitor_price) AS competitor_price,
+              MAX(CASE WHEN holiday IS NULL OR holiday = '' THEN 0 ELSE 1 END) AS is_holiday_week
+            FROM {table}
+            WHERE brand IS NOT NULL
+            GROUP BY 1, 2, 3
+            ORDER BY 1, 2, 3
+        """
     else:
         raise ValueError(
-            f"unsupported grain {grain!r}; expected one of ppg_week, store_ppg_week, store_category_week"
+            f"unsupported grain {grain!r}; expected one of ppg_week, store_ppg_week, "
+            f"category_week, store_category_week, brand_week, store_brand_week"
         )
 
     con = duckdb.connect(str(duckdb_path))
