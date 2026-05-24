@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { getArtifact } from "@/lib/api";
 import { useGrainState } from "@/lib/useGrainState";
@@ -299,12 +298,6 @@ function AdvancedEDAVisuals({ runId, ready }: Props) {
           </ul>
         </Section>
       )}
-      <Link
-        href={`/runs/${runId}/eda`}
-        className="inline-flex items-center gap-1 rounded border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-[11px] text-emerald-200 hover:bg-emerald-500/20"
-      >
-        Open advanced EDA dashboard →
-      </Link>
     </div>
   );
 }
