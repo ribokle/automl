@@ -117,6 +117,7 @@ export const artifactUrl = (runId: string, name: string) =>
 export interface ApprovePayload {
   modelling_grain?: string;
   comparison_grains?: string[];
+  comparison_agents?: string[];
 }
 
 export async function approveAgent(

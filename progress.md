@@ -1475,3 +1475,55 @@ Tests / verification:
   recommends ``ppg_week`` (61 cells, in sweet spot).
 - ``tsc --noEmit`` clean; ``next build`` clean; ``/runs/[id]``
   bundle 42.2 kB (was 40.5 kB before the selector).
+
+#### Follow-up: full-depth fan-out + chip-row on every downstream card ✅
+
+The first cut only re-ran ``feature_engineering`` + ``modeling`` per
+comparison grain, and only the modelling card had a chip switcher. The
+operator hit two real problems: the modelling chip swapped the
+candidates table but not SHAP / posterior / fitted-vs-actual (those
+filenames were hardcoded), and every downstream card (decomposition,
+simulation, optimization, validation, insights) had zero grain
+awareness so there was nothing to compare past modelling.
+
+- ``_run_comparison_grains`` rewritten with a dynamic mtime-based
+  snapshot/rename: the runner now re-runs the full
+  ``_COMPARISON_DOWNSTREAM_AGENTS`` tail
+  (``feature_engineering`` → ``insights``) per comparison grain. Each
+  pass writes to canonical filenames; at end-of-grain, every file
+  touched (mtime > baseline) gets renamed to ``<stem>__<grain>.<ext>``.
+  Primary canonical artifacts are restored from
+  ``__primary_backup__`` siblings after the loop.
+- Operator-selectable fan-out depth: the GrainSelector now renders
+  a checkbox row alongside the comparison-grain picker (modeling /
+  decomposition / simulation / optimization / validation /
+  insights). Unchecking a stage cascades to drop everything after
+  it; checking one cascades up. The selection flows through as
+  ``run.options["comparison_agents"]``;
+  ``_agents_for_depth`` resolves it to the prereq-respecting
+  concrete agent list.
+- ``ApprovePayload.comparison_agents`` (whitelisted against a fixed
+  set of stage names) accepted and merged into run options.
+- Frontend pattern extracted: ``web/lib/useGrainState.ts`` hook
+  exposes ``{primary, comparisons, selected, isPrimary, nameFor}``
+  and ``web/components/GrainChipRow.tsx`` renders the chip row.
+  Both ``ModelingVisuals`` (now also swapping SHAP / posterior /
+  FVA), ``DecompositionVisuals``, ``SimulationVisuals``,
+  ``OptimizationVisuals``, ``ValidationVisuals``, and
+  ``InsightsVisuals`` use the hook + chip-row so toggling a chip
+  swaps every panel in the card. ``OptimizationVisuals``
+  conditionally hides the ConstraintEditor when not on the primary
+  grain (rerun targets the primary optimisation gate).
+- Richer SSE events: ``comparison_started`` and
+  ``comparison_progress`` carry the resolved agent list plus
+  ``agent_index`` / ``total_agents``. New
+  ``comparison_cost_warning`` event fires when a real LLM provider
+  is configured so the UI can surface the cost implication.
+- New ``tests/unit/test_comparison_fanout.py`` covers the depth
+  resolver (none → full tail, empty → empty, single stage → prereqs
+  included, intermediate stage → tail capped) and the snapshot
+  helper. Existing
+  ``tests/integration/test_multi_grain_comparison.py`` pins
+  ``comparison_agents=["modeling"]`` to preserve its tight scope.
+  Full suite: 259 passed, 3 skipped. ``tsc --noEmit`` clean,
+  ``next build`` clean.

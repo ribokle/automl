@@ -26,6 +26,21 @@ from core.orchestrator.gates import RERUNNABLE_AGENTS, gate_registry
 router = APIRouter(prefix="/runs", tags=["approvals"], dependencies=[Depends(require_auth)])
 
 
+# Operator-facing fan-out depth stages. Must match the frontend's
+# GrainSelector checkbox list. Whitelisted here so a typo in the
+# payload returns 422 rather than silently no-op'ing the choice.
+_COMPARISON_AGENT_CHOICES: frozenset[str] = frozenset(
+    {
+        "modeling",
+        "decomposition",
+        "simulation",
+        "optimization",
+        "validation",
+        "insights",
+    }
+)
+
+
 class ApprovePayload(BaseModel):
     """Optional payload accepted by ``POST /runs/{id}/approve``.
 
@@ -37,6 +52,7 @@ class ApprovePayload(BaseModel):
 
     modelling_grain: ModellingGrain | None = None
     comparison_grains: list[ModellingGrain] | None = None
+    comparison_agents: list[str] | None = None
 
     model_config = {"extra": "forbid"}
 
@@ -51,6 +67,22 @@ class ApprovePayload(BaseModel):
                 seen.append(g)
         return seen
 
+    @field_validator("comparison_agents")
+    @classmethod
+    def _validate_comparison_agents(cls, value: list[str] | None) -> list[str] | None:
+        if value is None:
+            return None
+        seen: list[str] = []
+        for name in value:
+            if name not in _COMPARISON_AGENT_CHOICES:
+                raise ValueError(
+                    f"comparison_agents: {name!r} is not a valid fan-out stage; "
+                    f"choose from {sorted(_COMPARISON_AGENT_CHOICES)}"
+                )
+            if name not in seen:
+                seen.append(name)
+        return seen
+
     def as_options(self) -> dict[str, Any]:
         """Drop None fields; enum values become their string value."""
         out: dict[str, Any] = {}
@@ -58,6 +90,8 @@ class ApprovePayload(BaseModel):
             out["modelling_grain"] = self.modelling_grain.value
         if self.comparison_grains is not None:
             out["comparison_grains"] = [g.value for g in self.comparison_grains]
+        if self.comparison_agents is not None:
+            out["comparison_agents"] = list(self.comparison_agents)
         return out
 
 

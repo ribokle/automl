@@ -212,28 +212,87 @@ async def execute(
     return run
 
 
-_COMPARISON_SNAPSHOT_FILES = (
-    "modeling_results.json",
-    "elasticity_per_ppg.json",
-    "elasticity_per_ppg_pooled.json",
-    "modeling_preflight.json",
+# Tail of AGENT_ORDER that re-runs per comparison grain. Order matches
+# AGENT_ORDER so each agent reads the previous one's canonical output.
+# feature_engineering / feature_refine / results_reasoning are
+# always-on prerequisites; the operator-facing "depth" picker (the
+# UI's `comparison_agents` payload) decides where to stop.
+_COMPARISON_DOWNSTREAM_AGENTS: tuple[str, ...] = (
+    "feature_engineering",
+    "feature_refine",
+    "modeling",
+    "results_reasoning",
+    "decomposition",
+    "simulation",
+    "optimization",
+    "validation",
+    "insights",
+)
+
+# Operator-facing stages in the UI's depth picker. Picking a stage
+# implicitly includes every stage above it (data dependency).
+_COMPARISON_DEPTH_STAGES: tuple[str, ...] = (
+    "modeling",
+    "decomposition",
+    "simulation",
+    "optimization",
+    "validation",
+    "insights",
 )
 
 
+def _agents_for_depth(comparison_agents: list[str] | None) -> tuple[str, ...]:
+    """Resolve the operator's depth picker into a concrete agent list.
+
+    ``None`` means "not specified" → default to the full tail.
+    An empty list means "explicitly nothing" → empty fan-out.
+    Otherwise walk ``_COMPARISON_DOWNSTREAM_AGENTS`` and keep every
+    agent up to and including the deepest stage the operator picked.
+    feature_engineering / feature_refine / results_reasoning are
+    always included as prerequisites when their dependents are.
+    """
+    if comparison_agents is None:
+        return _COMPARISON_DOWNSTREAM_AGENTS
+    if not comparison_agents:
+        return ()
+    requested = set(comparison_agents)
+    # Find the deepest selected stage in canonical order.
+    last_idx = -1
+    for i, name in enumerate(_COMPARISON_DOWNSTREAM_AGENTS):
+        if name in requested:
+            last_idx = i
+    if last_idx < 0:
+        return ()
+    return _COMPARISON_DOWNSTREAM_AGENTS[: last_idx + 1]
+
+
+def _snapshot_mtimes(run_dir: "Path") -> dict[str, float]:
+    """Capture ``{name: mtime}`` for every file in ``run_dir``.
+
+    Used as a baseline so the comparison loop can detect which files
+    each grain's pass produced or overwrote, and rename only those.
+    """
+    return {p.name: p.stat().st_mtime for p in run_dir.iterdir() if p.is_file()}
+
+
 async def _run_comparison_grains(run: RunState, *, agent_mode: bool) -> None:
-    """For each grain in ``run.options["comparison_grains"]``, run a
-    fresh feature_engineering + modeling pass and write per-grain
-    artifacts (``modeling_results__<grain>.json``,
-    ``elasticity_per_ppg__<grain>.json``, ...).
+    """Re-run the downstream tail per comparison grain.
 
-    Snapshots the primary modelling outputs before the loop and
-    restores them at the end so the primary artifacts stay at their
-    canonical filenames (downstream agents and the UI's default tab
-    both consume those).
+    For each grain in ``run.options["comparison_grains"]``, runs the
+    agents picked by ``run.options["comparison_agents"]`` (default: the
+    full ``_COMPARISON_DOWNSTREAM_AGENTS`` tail). Each pass writes to
+    canonical artifact filenames so agents inside the loop read the
+    previous stage's output naturally; at the end of each grain's pass
+    we mtime-detect which files were touched and rename them to
+    ``<stem>__<grain><suffix>``.
 
-    Failures here are non-fatal: a comparison miss shouldn't tear down
-    a healthy primary run. The event stream surfaces them so the UI
-    can show which comparisons completed.
+    Primary canonical outputs are backed up before the loop and
+    restored after, so the primary-grain artifacts stay at their
+    canonical names for the default UI tab and any post-hoc CLI tooling.
+
+    Failures here are non-fatal: a comparison failure (per grain or per
+    stage) emits a structured event and continues to the next grain so
+    a single broken pass doesn't tear down a healthy primary run.
     """
     import shutil
     from pathlib import Path
@@ -247,25 +306,54 @@ async def _run_comparison_grains(run: RunState, *, agent_mode: bool) -> None:
     if not comparisons:
         return
 
+    requested_agents = run.options.get("comparison_agents")
+    fanout_agents = _agents_for_depth(requested_agents)
+    if not fanout_agents:
+        return
+
     run_dir = Path(run.run_dir)
-    # Snapshot the primary modelling artifacts BEFORE the loop so we
-    # can restore them once comparisons finish overwriting the
-    # canonical filenames. Also snapshot the FE / modelling AgentResult
-    # objects (outputs / artifacts / reasoning) — without this the
-    # last-comparison's status would shadow the primary's in
-    # state.json.
-    snapshots: dict[Path, Path] = {}
-    for fname in _COMPARISON_SNAPSHOT_FILES:
-        src = run_dir / fname
-        if src.exists():
-            backup = src.with_name(f"{src.stem}.__primary_backup__{src.suffix}")
-            shutil.copy2(src, backup)
-            snapshots[src] = backup
+
+    # Baseline: capture which files exist + their mtimes BEFORE the loop.
+    # Anything written during the loop will either be new (not in baseline)
+    # or mtime-changed; that's the renamed-per-grain set. Anything not
+    # touched stays where it is.
+    baseline: dict[str, float] = _snapshot_mtimes(run_dir)
+
+    # Back up canonical artifacts (basenames without "__") to siblings
+    # so we can restore them after the comparison loop overwrites them.
+    primary_backups: dict[Path, Path] = {}
+    for name in baseline:
+        if "__" in Path(name).stem:
+            continue
+        src = run_dir / name
+        backup = src.with_name(f"{src.stem}.__primary_backup__{src.suffix}")
+        shutil.copy2(src, backup)
+        primary_backups[src] = backup
+
+    # Snapshot AgentResult state for every agent we're about to re-run
+    # so the comparison's status doesn't shadow the primary in state.json.
     primary_results = {
         name: run.agents[name].model_copy(deep=True)
-        for name in ("feature_engineering", "modeling")
+        for name in fanout_agents
         if name in run.agents
     }
+
+    # Surface cost expectations once if we're not in dry-run.
+    try:
+        provider = run.options.get("llm_provider") or "dry_run"
+    except Exception:  # noqa: BLE001
+        provider = "dry_run"
+    if provider != "dry_run":
+        await bus.publish(
+            run.id,
+            run.run_dir,
+            {
+                "type": "comparison_cost_warning",
+                "grains": list(comparisons),
+                "agents": list(fanout_agents),
+                "provider": provider,
+            },
+        )
 
     await bus.publish(
         run.id,
@@ -274,56 +362,78 @@ async def _run_comparison_grains(run: RunState, *, agent_mode: bool) -> None:
             "type": "comparison_started",
             "grains": list(comparisons),
             "primary": primary_grain,
+            "agents": list(fanout_agents),
         },
     )
 
+    total_agents = len(fanout_agents)
     for grain in comparisons:
-        await bus.publish(
-            run.id,
-            run.run_dir,
-            {"type": "comparison_progress", "grain": grain, "stage": "feature_engineering"},
-        )
-        # Swap the primary modelling_grain into options just for this
-        # pass; the FE / modelling agents read it from there.
+        # Refresh the per-grain baseline so end-of-grain rename only
+        # picks up files this grain wrote (not files written by the
+        # previous comparison grain that already got renamed).
+        per_grain_baseline = _snapshot_mtimes(run_dir)
         run.options["modelling_grain"] = grain
         run.save()
-        try:
-            await _build_agent("feature_engineering", agent_mode=agent_mode).run(run)
-            await bus.publish(
-                run.id,
-                run.run_dir,
-                {"type": "comparison_progress", "grain": grain, "stage": "modeling"},
-            )
-            await _build_agent("modeling", agent_mode=agent_mode).run(run)
-        except Exception as exc:  # noqa: BLE001
+        failed_at: str | None = None
+        for idx, agent_name in enumerate(fanout_agents):
             await bus.publish(
                 run.id,
                 run.run_dir,
                 {
-                    "type": "comparison_finished",
+                    "type": "comparison_progress",
                     "grain": grain,
-                    "status": "failed",
-                    "error": str(exc),
+                    "stage": agent_name,
+                    "agent_index": idx,
+                    "total_agents": total_agents,
                 },
             )
-            continue
+            try:
+                await _build_agent(agent_name, agent_mode=agent_mode).run(run)
+            except Exception as exc:  # noqa: BLE001
+                failed_at = agent_name
+                await bus.publish(
+                    run.id,
+                    run.run_dir,
+                    {
+                        "type": "comparison_finished",
+                        "grain": grain,
+                        "status": "failed",
+                        "failed_at": agent_name,
+                        "error": str(exc),
+                    },
+                )
+                break
 
-        # Capture the comparison outputs under grain-suffixed names so
-        # the next iteration can overwrite the canonical filenames freely.
-        for fname in _COMPARISON_SNAPSHOT_FILES:
-            src = run_dir / fname
-            if not src.exists():
+        # Rename touched files (new or mtime-changed) to per-grain
+        # suffix. Skip files whose basename already contains "__"
+        # (other grains' artifacts, backup markers) so repeated grains
+        # don't double-suffix.
+        for fpath in list(run_dir.iterdir()):
+            if not fpath.is_file():
                 continue
-            dst = run_dir / f"{src.stem}__{grain}{src.suffix}"
-            src.rename(dst)
-        await bus.publish(
-            run.id,
-            run.run_dir,
-            {"type": "comparison_finished", "grain": grain, "status": "done"},
-        )
+            if "__" in fpath.stem:
+                continue
+            prior_mtime = per_grain_baseline.get(fpath.name)
+            if prior_mtime is not None and fpath.stat().st_mtime <= prior_mtime:
+                continue
+            dst = fpath.with_name(f"{fpath.stem}__{grain}{fpath.suffix}")
+            try:
+                fpath.rename(dst)
+            except OSError:
+                # Best-effort: if the target name is already taken
+                # (shouldn't happen in normal flow), leave the file in
+                # place rather than corrupting state.
+                pass
 
-    # Restore the primary outputs and AgentResults.
-    for canonical, backup in snapshots.items():
+        if failed_at is None:
+            await bus.publish(
+                run.id,
+                run.run_dir,
+                {"type": "comparison_finished", "grain": grain, "status": "done"},
+            )
+
+    # Restore the primary canonical artifacts and AgentResults.
+    for canonical, backup in primary_backups.items():
         if backup.exists():
             shutil.move(str(backup), str(canonical))
     for name, primary in primary_results.items():

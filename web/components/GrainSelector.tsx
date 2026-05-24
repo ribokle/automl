@@ -44,10 +44,27 @@ export interface GrainOptionsBlob {
 interface Props {
   options: GrainOptionsBlob;
   initialPrimary?: string;
-  onSubmit: (payload: { modelling_grain: string; comparison_grains: string[] }) => Promise<void>;
+  onSubmit: (payload: {
+    modelling_grain: string;
+    comparison_grains: string[];
+    comparison_agents: string[];
+  }) => Promise<void>;
   submitLabel?: string;
   disabled?: boolean;
 }
+
+// Operator-facing fan-out depth stages. Must match
+// ``_COMPARISON_AGENT_CHOICES`` in ``api/routes/approvals.py`` and the
+// canonical order in ``core/orchestrator/runner.py``. The list is
+// ordered: picking a stage implicitly includes every stage above it.
+const FANOUT_STAGES: Array<{ id: string; label: string; description: string }> = [
+  { id: "modeling", label: "Modelling", description: "elasticities + fit diagnostics" },
+  { id: "decomposition", label: "Decomposition", description: "due-to driver split" },
+  { id: "simulation", label: "Simulation", description: "price × promo grid" },
+  { id: "optimization", label: "Optimisation", description: "recommended prices" },
+  { id: "validation", label: "Validation", description: "rolling-CV verdicts" },
+  { id: "insights", label: "Insights", description: "executive narrative (LLM)" },
+];
 
 const PRODUCT_ROWS: Array<{ id: "ppg" | "category" | "brand"; label: string; description: string }> = [
   { id: "ppg", label: "PPG", description: "auto-clustered price-pack groups" },
@@ -85,12 +102,32 @@ export function GrainSelector({ options, initialPrimary, onSubmit, submitLabel =
 
   const [primary, setPrimary] = useState<string>(defaultPrimary);
   const [comparisons, setComparisons] = useState<Set<string>>(new Set());
+  const [fanout, setFanout] = useState<Set<string>>(
+    () => new Set(FANOUT_STAGES.map((s) => s.id)),
+  );
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setPrimary(defaultPrimary);
   }, [defaultPrimary]);
+
+  function toggleFanout(stageId: string) {
+    // Cascade rules: unchecking a stage removes every stage AFTER it
+    // (data dependency); checking a stage adds every stage BEFORE it.
+    // The operator never sees a half-valid configuration.
+    setFanout((prev) => {
+      const idx = FANOUT_STAGES.findIndex((s) => s.id === stageId);
+      if (idx < 0) return prev;
+      const next = new Set(prev);
+      if (next.has(stageId)) {
+        for (let i = idx; i < FANOUT_STAGES.length; i++) next.delete(FANOUT_STAGES[i].id);
+      } else {
+        for (let i = 0; i <= idx; i++) next.add(FANOUT_STAGES[i].id);
+      }
+      return next;
+    });
+  }
 
   function toggleComparison(id: string) {
     setComparisons((prev) => {
@@ -119,6 +156,7 @@ export function GrainSelector({ options, initialPrimary, onSubmit, submitLabel =
       await onSubmit({
         modelling_grain: primary,
         comparison_grains: Array.from(comparisons),
+        comparison_agents: FANOUT_STAGES.map((s) => s.id).filter((id) => fanout.has(id)),
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -234,9 +272,42 @@ export function GrainSelector({ options, initialPrimary, onSubmit, submitLabel =
       </div>
 
       {comparisons.size > 0 && (
-        <div className="rounded border border-emerald-500/30 bg-emerald-500/[0.06] px-2 py-1.5 text-[10px] text-emerald-100">
-          Will additionally fit modelling for: {Array.from(comparisons).join(", ")}.
-          Downstream agents (decomposition / optimisation / validation) only run at the primary grain.
+        <div className="space-y-2 rounded border border-emerald-500/30 bg-emerald-500/[0.06] px-2 py-2 text-[10px] text-emerald-100">
+          <div>
+            <span className="font-semibold uppercase tracking-wider">Comparison grains</span>
+            {": "}
+            {Array.from(comparisons).join(", ")}
+          </div>
+          <div>
+            <div className="mb-1 font-semibold uppercase tracking-wider">Fan-out depth</div>
+            <div className="text-[9.5px] text-emerald-200/70">
+              Stages re-run per comparison grain. Unchecking a stage drops every stage after it.
+            </div>
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
+              {FANOUT_STAGES.map((stage) => {
+                const checked = fanout.has(stage.id);
+                return (
+                  <label
+                    key={stage.id}
+                    title={stage.description}
+                    className={`flex cursor-pointer items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] ${
+                      checked
+                        ? "border-emerald-400/60 bg-emerald-500/15 text-emerald-100"
+                        : "border-slate-700 bg-slate-900/40 text-slate-400"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      className="accent-emerald-400"
+                      checked={checked}
+                      onChange={() => toggleFanout(stage.id)}
+                    />
+                    {stage.label}
+                  </label>
+                );
+              })}
+            </div>
+          </div>
         </div>
       )}
 

@@ -95,7 +95,11 @@ export function AgentCard({ runId, agent, index, status, events, agentState, isL
     };
   }, [runId, agent, status]);
 
-  async function submitGrainAndApprove(payload: { modelling_grain: string; comparison_grains: string[] }) {
+  async function submitGrainAndApprove(payload: {
+    modelling_grain: string;
+    comparison_grains: string[];
+    comparison_agents: string[];
+  }) {
     await approveAgent(runId, agent, payload);
   }
 

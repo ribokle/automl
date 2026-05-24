@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { getArtifact, getRun } from "@/lib/api";
+import { getArtifact } from "@/lib/api";
+import { useGrainState } from "@/lib/useGrainState";
+import { GrainChipRow } from "./GrainChipRow";
 import { CorrHeatmap, type CorrData } from "./charts/CorrHeatmap";
 import { CoverageHeatmap, type CoverageData } from "./charts/CoverageHeatmap";
 import { FeatureHistograms, type HistogramsData } from "./charts/FeatureHistograms";
@@ -359,52 +361,24 @@ interface ShapEntry {
 }
 
 function ModelingVisuals({ runId, ready, events, agentState }: Props) {
-  // Multi-grain UI: the run's options tell us which grain produced the
-  // canonical artifacts (primary) and which extra grains were fanned
-  // out (comparison_grains). The chip-row toggles which `modeling_results`
-  // file gets loaded for the candidates / per-store tables.
-  const [grainState, setGrainState] = useState<{ primary: string; comparisons: string[] }>({
-    primary: "ppg_week",
-    comparisons: [],
-  });
-  useEffect(() => {
-    if (!ready) return;
-    let cancelled = false;
-    getRun(runId)
-      .then((s) => {
-        if (cancelled) return;
-        const opts = (s.options ?? {}) as Record<string, unknown>;
-        const primary =
-          typeof opts.modelling_grain === "string" ? opts.modelling_grain : "ppg_week";
-        const comparisons = Array.isArray(opts.comparison_grains)
-          ? (opts.comparison_grains as string[]).filter((g) => g !== primary)
-          : [];
-        setGrainState({ primary, comparisons });
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [runId, ready]);
-
-  const [selectedGrain, setSelectedGrain] = useState<string>(grainState.primary);
-  useEffect(() => {
-    setSelectedGrain(grainState.primary);
-  }, [grainState.primary]);
-
-  const isPrimaryGrain = selectedGrain === grainState.primary;
-  const modelingName = isPrimaryGrain
-    ? "modeling_results.json"
-    : `modeling_results__${selectedGrain}.json`;
-  const elasticityPooledName = isPrimaryGrain
-    ? "elasticity_per_ppg_pooled.json"
-    : `elasticity_per_ppg_pooled__${selectedGrain}.json`;
-
-  const results = useArtifact<ModelingResults>(runId, modelingName, ready);
-  const shapBlob = useArtifact<ShapEntry[]>(runId, "shap_per_ppg.json", ready);
-  const posterior = useArtifact<PosteriorBlob>(runId, "hierarchical_posterior.json", ready);
-  const fvaBlob = useArtifact<FittedVsActualRow[]>(runId, "fitted_vs_actual.json", ready);
-  const pooledBlob = useArtifact<PooledRow[]>(runId, elasticityPooledName, ready);
+  const grain = useGrainState(runId, ready);
+  const results = useArtifact<ModelingResults>(runId, grain.nameFor("modeling_results.json"), ready);
+  const shapBlob = useArtifact<ShapEntry[]>(runId, grain.nameFor("shap_per_ppg.json"), ready);
+  const posterior = useArtifact<PosteriorBlob>(
+    runId,
+    grain.nameFor("hierarchical_posterior.json"),
+    ready,
+  );
+  const fvaBlob = useArtifact<FittedVsActualRow[]>(
+    runId,
+    grain.nameFor("fitted_vs_actual.json"),
+    ready,
+  );
+  const pooledBlob = useArtifact<PooledRow[]>(
+    runId,
+    grain.nameFor("elasticity_per_ppg_pooled.json"),
+    ready,
+  );
   const rows = useMemo<CandidatesRow[]>(() => {
     if (!results || "missing_columns" in results) return [];
     return results.per_ppg.filter((r) => r.attempts && r.attempts.length > 0);
@@ -456,35 +430,11 @@ function ModelingVisuals({ runId, ready, events, agentState }: Props) {
   const cellLabel = isStoreGrain
     ? `${distinctPpgs} PPGs · ${storeCells.length} store cells`
     : `${rows.length} PPGs`;
-  const grainChips = grainState.comparisons.length > 0 && (
-    <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
-      <span className="uppercase tracking-wider text-slate-500">Grain:</span>
-      {[grainState.primary, ...grainState.comparisons].map((g) => {
-        const isPrimary = g === grainState.primary;
-        const isActive = g === selectedGrain;
-        return (
-          <button
-            key={g}
-            type="button"
-            onClick={() => setSelectedGrain(g)}
-            className={`rounded border px-2 py-0.5 font-mono transition ${
-              isActive
-                ? "border-sky-400/70 bg-sky-500/15 text-sky-100"
-                : "border-slate-700 text-slate-400 hover:border-slate-500"
-            }`}
-          >
-            {g}
-            {isPrimary && <span className="ml-1 text-amber-300" title="primary grain">★</span>}
-          </button>
-        );
-      })}
-    </div>
-  );
 
   return (
     <div className="mt-4 space-y-5 border-t border-slate-800 pt-4">
       <ModelingProgress events={events} agentState={agentState} />
-      {grainChips}
+      <GrainChipRow state={grain} />
       <Section title={`Candidate fits per PPG (winners marked) · ${cellLabel}`}>
         {grainBadge && <div className="-mt-1 mb-2">{grainBadge}</div>}
         {isStoreGrain ? (
@@ -544,7 +494,12 @@ function ModelingVisuals({ runId, ready, events, agentState }: Props) {
 }
 
 function DecompositionVisuals({ runId, ready }: Props) {
-  const blob = useArtifact<DecompPPGBlob[]>(runId, "decomposition_per_ppg_week.json", ready);
+  const grain = useGrainState(runId, ready);
+  const blob = useArtifact<DecompPPGBlob[]>(
+    runId,
+    grain.nameFor("decomposition_per_ppg_week.json"),
+    ready,
+  );
   const list = useMemo(() => (Array.isArray(blob) ? blob : []), [blob]);
   const [selected, setSelected] = useState<string | null>(null);
   useEffect(() => {
@@ -556,6 +511,7 @@ function DecompositionVisuals({ runId, ready }: Props) {
   const current = list.find((r) => r.ppg_id === selected) ?? list[0];
   return (
     <div className="mt-4 space-y-3 border-t border-slate-800 pt-4">
+      <GrainChipRow state={grain} />
       <Section title="Due-to decomposition over time">
         <div className="mb-2 flex flex-wrap items-center gap-1">
           {list.map((r) => (
@@ -585,7 +541,12 @@ function DecompositionVisuals({ runId, ready }: Props) {
 }
 
 function SimulationVisuals({ runId, ready }: Props) {
-  const blob = useArtifact<SimulationGridBlob[]>(runId, "simulation_grid.json", ready);
+  const grain = useGrainState(runId, ready);
+  const blob = useArtifact<SimulationGridBlob[]>(
+    runId,
+    grain.nameFor("simulation_grid.json"),
+    ready,
+  );
   const list = useMemo(() => (Array.isArray(blob) ? blob : []), [blob]);
   const [selected, setSelected] = useState<string | null>(null);
   const [metric, setMetric] = useState<"revenue" | "margin" | "units">("revenue");
@@ -598,6 +559,7 @@ function SimulationVisuals({ runId, ready }: Props) {
   const current = list.find((r) => r.ppg_id === selected) ?? list[0];
   return (
     <div className="mt-4 space-y-3 border-t border-slate-800 pt-4">
+      <GrainChipRow state={grain} />
       <Section title={`Price × promo grid · ${current.ppg_id} · ${current.model_kind}`}>
         <div className="mb-2 flex flex-wrap items-center justify-between gap-1">
           <div className="flex flex-wrap items-center gap-1">
@@ -649,9 +611,22 @@ interface OptResultsRow {
 }
 
 function OptimizationVisuals({ runId, ready }: Props) {
-  const rows = useArtifact<RecommendationRow[]>(runId, "optimization_table.json", ready);
-  const constraints = useArtifact<ConstraintsBlob>(runId, "optimization_constraints.json", ready);
-  const results = useArtifact<OptResultsRow[]>(runId, "optimization_results.json", ready);
+  const grain = useGrainState(runId, ready);
+  const rows = useArtifact<RecommendationRow[]>(
+    runId,
+    grain.nameFor("optimization_table.json"),
+    ready,
+  );
+  const constraints = useArtifact<ConstraintsBlob>(
+    runId,
+    grain.nameFor("optimization_constraints.json"),
+    ready,
+  );
+  const results = useArtifact<OptResultsRow[]>(
+    runId,
+    grain.nameFor("optimization_results.json"),
+    ready,
+  );
   if (!rows && !constraints) return null;
   const recos = Array.isArray(rows) ? rows : [];
   const c = constraints && !("missing_columns" in constraints) ? constraints : null;
@@ -667,6 +642,7 @@ function OptimizationVisuals({ runId, ready }: Props) {
     : [];
   return (
     <div className="mt-4 space-y-5 border-t border-slate-800 pt-4">
+      <GrainChipRow state={grain} />
       <Section title={`Recommendations · ${recos.length} PPGs · objective=${c?.objective ?? "—"}`}>
         <RecommendationTable rows={recos} />
       </Section>
@@ -680,22 +656,34 @@ function OptimizationVisuals({ runId, ready }: Props) {
           <ConstraintBinding rows={bindingRows} />
         </Section>
       )}
-      {c && (
+      {c && grain.isPrimary && (
         <Section title="Constraint editor · solve with defaults, edit, re-solve, approve">
           <ConstraintEditor runId={runId} current={c} />
         </Section>
+      )}
+      {c && !grain.isPrimary && (
+        <p className="text-[10.5px] text-slate-500">
+          Constraint editor is locked to the primary grain — switch back to ★ to
+          edit constraints and re-solve.
+        </p>
       )}
     </div>
   );
 }
 
 function InsightsVisuals({ runId, ready, agentState }: Props) {
-  const summary = useArtifact<InsightsSummaryBlob>(runId, "insights_summary.json", ready);
+  const grain = useGrainState(runId, ready);
+  const summary = useArtifact<InsightsSummaryBlob>(
+    runId,
+    grain.nameFor("insights_summary.json"),
+    ready,
+  );
   if (!summary || "missing_columns" in summary) return null;
   const hasPdf = Boolean(agentState?.artifacts?.some((a) => a.name === "report.pdf"));
   return (
     <div className="mt-4 border-t border-slate-800 pt-4">
-      <Section title="Executive summary">
+      <GrainChipRow state={grain} />
+      <Section title={`Executive summary${grain.isPrimary ? "" : ` · ${grain.selected}`}`}>
         <InsightsSummary runId={runId} data={summary} hasPdf={hasPdf} />
       </Section>
     </div>
@@ -703,8 +691,17 @@ function InsightsVisuals({ runId, ready, agentState }: Props) {
 }
 
 function ValidationVisuals({ runId, ready }: Props) {
-  const rows = useArtifact<ValidationRow[]>(runId, "validation_table.json", ready);
-  const residuals = useArtifact<ResidualRow[]>(runId, "validation_residuals.json", ready);
+  const grain = useGrainState(runId, ready);
+  const rows = useArtifact<ValidationRow[]>(
+    runId,
+    grain.nameFor("validation_table.json"),
+    ready,
+  );
+  const residuals = useArtifact<ResidualRow[]>(
+    runId,
+    grain.nameFor("validation_residuals.json"),
+    ready,
+  );
   const list = Array.isArray(rows) ? rows : [];
   const residualList = Array.isArray(residuals) ? residuals : [];
   const [selected, setSelected] = useState<string | null>(null);
@@ -717,6 +714,7 @@ function ValidationVisuals({ runId, ready }: Props) {
   const current = residualList.find((r) => r.ppg_id === selected) ?? residualList[0];
   return (
     <div className="mt-4 space-y-5 border-t border-slate-800 pt-4">
+      <GrainChipRow state={grain} />
       <Section title={`Rolling-origin CV verdicts · ${list.length} PPGs`}>
         <ValidationTable rows={list} />
       </Section>

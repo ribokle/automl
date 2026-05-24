@@ -76,6 +76,10 @@ def _seed(tmp_path: Path) -> RunState:
         options={
             "modelling_grain": ModellingGrain.PPG_WEEK,
             "comparison_grains": [ModellingGrain.BRAND_WEEK.value],
+            # Keep the fan-out tight for this synthetic warehouse: only
+            # the modelling tail, no downstream agents (this test
+            # doesn't seed the artifacts they need).
+            "comparison_agents": ["modeling"],
         },
     )
     state.run_dir = str(run_dir.resolve())
