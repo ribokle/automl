@@ -43,9 +43,14 @@ export function RunHeader({ runId, runStatus, agents, startedAt }: Props) {
 
   function jumpToAwaiting() {
     if (!awaiting) return;
-    const el = document.getElementById(`agent-${awaiting}`);
-    if (el) {
-      el.scrollIntoView({ behavior: "smooth", block: "start" });
+    // Scroll to the approval block specifically (not the card top) so the
+    // operator lands directly on the buttons. Falls back to the card if
+    // the approval block hasn't mounted yet.
+    const target =
+      document.getElementById(`approval-${awaiting}`) ??
+      document.getElementById(`agent-${awaiting}`);
+    if (target) {
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   }
 

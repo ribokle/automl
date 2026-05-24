@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   AGENT_META,
   LLM_AGENTS,
@@ -99,6 +99,73 @@ export function AgentCard({ runId, agent, index, status, events, agentState, isL
     await approveAgent(runId, agent, payload);
   }
 
+  // Auto-scroll the approval block into view the first time this card
+  // transitions to awaiting_approval — on mobile/tablet the page is long
+  // and the operator may not realise they need to scroll. Tracked via
+  // ref so a re-render after approve doesn't re-trigger the scroll.
+  const approvalRef = useRef<HTMLDivElement | null>(null);
+  const scrolledRef = useRef<boolean>(false);
+  useEffect(() => {
+    if (status !== "awaiting_approval") {
+      scrolledRef.current = false;
+      return;
+    }
+    if (scrolledRef.current) return;
+    if (!approvalRef.current) return;
+    scrolledRef.current = true;
+    approvalRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [status, grainOptions]);
+
+  const approvalBlock = status === "awaiting_approval" && !rerunning ? (
+    <div
+      id={`approval-${agent}`}
+      ref={approvalRef}
+      className="scroll-mt-6 border-b border-purple-500/30 bg-purple-500/10 px-4 py-3"
+    >
+      {agent === "ppg_mapping" && grainOptions ? (
+        <div className="space-y-3">
+          <p className="text-xs text-purple-200">
+            <span className="font-semibold">PPG clusters look good?</span> Pick the
+            modelling grain below and approve to continue.
+          </p>
+          <GrainSelector
+            options={grainOptions}
+            onSubmit={submitGrainAndApprove}
+            submitLabel="Approve & Configure"
+          />
+          <div className="flex justify-end">
+            <button
+              onClick={handleReject}
+              className="rounded bg-rose-500/20 px-3 py-1 text-xs font-medium text-rose-200 hover:bg-rose-500/30"
+            >
+              Reject
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="text-xs text-purple-100">
+            <span className="font-semibold">Approval required</span> to continue.
+          </span>
+          <div className="flex gap-2">
+            <button
+              onClick={handleApprove}
+              className="rounded border border-emerald-400/60 bg-emerald-500/25 px-3 py-1 text-xs font-semibold text-emerald-100 hover:bg-emerald-500/40"
+            >
+              Approve
+            </button>
+            <button
+              onClick={handleReject}
+              className="rounded border border-rose-400/60 bg-rose-500/20 px-3 py-1 text-xs font-medium text-rose-200 hover:bg-rose-500/30"
+            >
+              Reject
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  ) : null;
+
   return (
     <div id={`agent-${agent}`} className="relative scroll-mt-6 pl-10">
       <div className="absolute left-0 top-0 flex h-full flex-col items-center">
@@ -162,6 +229,12 @@ export function AgentCard({ runId, agent, index, status, events, agentState, isL
           )}
         </button>
 
+        {/* Approval block sits IMMEDIATELY under the header so the
+            approve / grain-selector controls are the first thing the
+            operator sees when the gate fires — not buried at the bottom
+            of a long disclosure. */}
+        {approvalBlock}
+
         {open && showDisclosure && (
           <div className="border-t border-slate-800 px-4 py-3 text-xs">
             {reasoning && (
@@ -216,50 +289,6 @@ export function AgentCard({ runId, agent, index, status, events, agentState, isL
         {rerunning && (
           <div className="border-t border-amber-500/30 bg-amber-500/5 px-4 py-2 text-xs text-amber-200">
             Re-solving with new constraints…
-          </div>
-        )}
-
-        {status === "awaiting_approval" && !rerunning && (
-          <div className="border-t border-purple-500/30 bg-purple-500/5 px-4 py-3">
-            {agent === "ppg_mapping" && grainOptions ? (
-              <div className="space-y-3">
-                <p className="text-xs text-purple-200">
-                  PPG clusters look good? Pick the modelling grain below
-                  and approve to continue.
-                </p>
-                <GrainSelector
-                  options={grainOptions}
-                  onSubmit={submitGrainAndApprove}
-                  submitLabel="Approve & Configure"
-                />
-                <div className="flex justify-end">
-                  <button
-                    onClick={handleReject}
-                    className="rounded bg-rose-500/20 px-3 py-1 text-xs font-medium text-rose-200 hover:bg-rose-500/30"
-                  >
-                    Reject
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-xs text-purple-200">Approval required to proceed</span>
-                <div className="flex gap-2">
-                  <button
-                    onClick={handleApprove}
-                    className="rounded bg-emerald-500/20 px-3 py-1 text-xs font-medium text-emerald-200 hover:bg-emerald-500/30"
-                  >
-                    Approve
-                  </button>
-                  <button
-                    onClick={handleReject}
-                    className="rounded bg-rose-500/20 px-3 py-1 text-xs font-medium text-rose-200 hover:bg-rose-500/30"
-                  >
-                    Reject
-                  </button>
-                </div>
-              </div>
-            )}
           </div>
         )}
       </div>
