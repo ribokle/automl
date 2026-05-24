@@ -171,6 +171,21 @@ class ModelingAgent(Agent):
         controls = _load_controls(run_dir)
         has_grain_unit = "grain_unit" in feats.columns
 
+        # Cells the modelling loop will visit (after restricting to eligible
+        # PPGs). At chain grain this is just len(eligible); at store grain
+        # it's the number of distinct (ppg_id, grain_unit) keys actually
+        # observed in the feature frame.
+        if has_grain_unit:
+            total_cells = int(
+                feats[feats["ppg_id"].isin(eligible)]
+                .groupby(["ppg_id", "grain_unit"])
+                .ngroups
+            )
+        else:
+            total_cells = int(
+                feats[feats["ppg_id"].isin(eligible)]["ppg_id"].nunique()
+            )
+
         await self.emit(
             run,
             "tool_called",
@@ -181,6 +196,7 @@ class ModelingAgent(Agent):
                 "grain_units": (
                     int(feats["grain_unit"].nunique()) if has_grain_unit else 1
                 ),
+                "total_cells": total_cells,
             },
         )
 
@@ -228,6 +244,16 @@ class ModelingAgent(Agent):
                             "winner": None,
                             "skip_reason": reason,
                         }
+                    )
+                    await self.emit(
+                        run,
+                        "tool_called",
+                        {
+                            "tool": "fit_skipped",
+                            "ppg_id": ppg_id,
+                            "grain_unit": unit_id,
+                            "reason": reason.split(" (")[0],
+                        },
                     )
                     continue
                 row = await asyncio.to_thread(_fit_one_ppg, ppg_id, slice_, controls)

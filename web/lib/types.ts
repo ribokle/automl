@@ -39,6 +39,14 @@ export interface RunEvent {
   columns?: number;
   n_skus?: number;
   n_ppgs?: number;
+  // Modelling-progress fields (load_inputs sends total_cells once, each
+  // fit_candidates/fit_skipped event then increments the running count).
+  ppg_id?: string;
+  grain_unit?: string | null;
+  total_cells?: number;
+  winner?: string;
+  reason?: string;
+  grain_units?: number;
   error?: string;
   approved?: boolean;
 }

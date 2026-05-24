@@ -30,6 +30,7 @@ import {
   type CellRow,
   type PooledRow,
 } from "./tables/ModelingByStore";
+import { ModelingProgress } from "./ModelingProgress";
 import { DataPreview, type ProfileBlob } from "./tables/DataPreview";
 import { DropLog, KeptList, type DropLogData } from "./tables/DropLog";
 import { RecommendationTable, type RecommendationRow } from "./tables/RecommendationTable";
@@ -357,7 +358,7 @@ interface ShapEntry {
   shap: SHAPSummary;
 }
 
-function ModelingVisuals({ runId, ready }: Props) {
+function ModelingVisuals({ runId, ready, events, agentState }: Props) {
   const results = useArtifact<ModelingResults>(runId, "modeling_results.json", ready);
   const shapBlob = useArtifact<ShapEntry[]>(runId, "shap_per_ppg.json", ready);
   const posterior = useArtifact<PosteriorBlob>(runId, "hierarchical_posterior.json", ready);
@@ -416,6 +417,7 @@ function ModelingVisuals({ runId, ready }: Props) {
     : `${rows.length} PPGs`;
   return (
     <div className="mt-4 space-y-5 border-t border-slate-800 pt-4">
+      <ModelingProgress events={events} agentState={agentState} />
       <Section title={`Candidate fits per PPG (winners marked) · ${cellLabel}`}>
         {grainBadge && <div className="-mt-1 mb-2">{grainBadge}</div>}
         {isStoreGrain ? (
