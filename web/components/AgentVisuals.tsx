@@ -25,6 +25,11 @@ import { SimulationHeatmap, type SimulationGridBlob } from "./charts/SimulationH
 import { PPGTabs } from "./PPGTabs";
 import { PPGTable } from "./PPGTable";
 import { CandidatesTable, type CandidatesRow } from "./tables/CandidatesTable";
+import {
+  ModelingByStore,
+  type CellRow,
+  type PooledRow,
+} from "./tables/ModelingByStore";
 import { DataPreview, type ProfileBlob } from "./tables/DataPreview";
 import { DropLog, KeptList, type DropLogData } from "./tables/DropLog";
 import { RecommendationTable, type RecommendationRow } from "./tables/RecommendationTable";
@@ -336,10 +341,13 @@ interface ModelingResults {
   controls_used: string[];
   per_ppg: (CandidatesRow & {
     winner: { diagnostics: { shap?: SHAPSummary } } | null;
+    grain_unit?: string | null;
   })[];
   n_correct_sign: number;
   n_retries: number;
   n_total: number;
+  n_robust_refit?: number;
+  skip_reasons?: Record<string, number>;
   model_pool: string[];
 }
 
@@ -354,10 +362,31 @@ function ModelingVisuals({ runId, ready }: Props) {
   const shapBlob = useArtifact<ShapEntry[]>(runId, "shap_per_ppg.json", ready);
   const posterior = useArtifact<PosteriorBlob>(runId, "hierarchical_posterior.json", ready);
   const fvaBlob = useArtifact<FittedVsActualRow[]>(runId, "fitted_vs_actual.json", ready);
+  const pooledBlob = useArtifact<PooledRow[]>(runId, "elasticity_per_ppg_pooled.json", ready);
   const rows = useMemo<CandidatesRow[]>(() => {
     if (!results || "missing_columns" in results) return [];
     return results.per_ppg.filter((r) => r.attempts && r.attempts.length > 0);
   }, [results]);
+  // A run is at a store-grain when any modelling row carries a grain_unit
+  // other than null / undefined / "chain". The pooled artifact is also
+  // emitted only at store-grain; combining both keeps us robust to an
+  // out-of-date browser cache.
+  const isStoreGrain = useMemo(() => {
+    if (!results || "missing_columns" in results) return false;
+    return results.per_ppg.some(
+      (r) => r.grain_unit && r.grain_unit !== "chain",
+    );
+  }, [results]);
+  const storeCells = useMemo<CellRow[]>(() => {
+    if (!isStoreGrain) return [];
+    return rows
+      .filter((r) => (r as CandidatesRow & { grain_unit?: string | null }).grain_unit)
+      .map((r) => r as CellRow);
+  }, [rows, isStoreGrain]);
+  const pooled = useMemo<PooledRow[]>(
+    () => (Array.isArray(pooledBlob) ? pooledBlob : []),
+    [pooledBlob],
+  );
   const [selected, setSelected] = useState<string | null>(null);
   useEffect(() => {
     if (rows.length && (!selected || !rows.some((r) => r.ppg_id === selected))) {
@@ -374,10 +403,33 @@ function ModelingVisuals({ runId, ready }: Props) {
   const selectedShap = selected ? shapMap.get(selected) : undefined;
   const selectedFva = selected ? fvaMap.get(selected) : undefined;
   const hasPosterior = posterior && !("missing_columns" in posterior) && posterior.n_studies > 0;
+  const distinctPpgs = isStoreGrain
+    ? new Set(storeCells.map((c) => c.ppg_id)).size
+    : rows.length;
+  const grainBadge = isStoreGrain ? (
+    <span className="ml-2 rounded border border-sky-500/40 bg-sky-500/10 px-1.5 py-0.5 text-[9px] uppercase tracking-wider text-sky-200">
+      Hoch grain · per-store
+    </span>
+  ) : null;
+  const cellLabel = isStoreGrain
+    ? `${distinctPpgs} PPGs · ${storeCells.length} store cells`
+    : `${rows.length} PPGs`;
   return (
     <div className="mt-4 space-y-5 border-t border-slate-800 pt-4">
-      <Section title={`Candidate fits per PPG (winners marked) · ${rows.length} PPGs`}>
-        {rows.length > 0 ? (
+      <Section title={`Candidate fits per PPG (winners marked) · ${cellLabel}`}>
+        {grainBadge && <div className="-mt-1 mb-2">{grainBadge}</div>}
+        {isStoreGrain ? (
+          storeCells.length > 0 ? (
+            <ModelingByStore
+              cells={storeCells}
+              pooled={pooled}
+              selectedPpg={selected}
+              onSelectPpg={setSelected}
+            />
+          ) : (
+            <p className="text-[11px] text-slate-500">No store cells to display.</p>
+          )
+        ) : rows.length > 0 ? (
           <CandidatesTable rows={rows} selectedPpg={selected} onSelectPpg={setSelected} />
         ) : (
           <p className="text-[11px] text-slate-500">No fits to display.</p>
