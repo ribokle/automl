@@ -402,7 +402,15 @@ function ModelingVisuals({ runId, ready, events, agentState }: Props) {
       setSelected(rows[0].ppg_id);
     }
   }, [rows, selected]);
-  if (!results && !shapBlob && !posterior) return null;
+  if (!results && !shapBlob && !posterior) {
+    if (grain.comparisons.length === 0) return null;
+    return (
+      <div className="mt-4 border-t border-slate-800 pt-4">
+        <ModelingProgress events={events} agentState={agentState} />
+        <GrainChipRow state={grain} />
+      </div>
+    );
+  }
   const shapMap = new Map<string, ShapEntry>(
     Array.isArray(shapBlob) ? shapBlob.map((s) => [s.ppg_id, s]) : [],
   );
@@ -500,7 +508,14 @@ function DecompositionVisuals({ runId, ready }: Props) {
       setSelected(list[0].ppg_id);
     }
   }, [list, selected]);
-  if (!list.length) return null;
+  if (!list.length) {
+    if (grain.comparisons.length === 0) return null;
+    return (
+      <div className="mt-4 border-t border-slate-800 pt-4">
+        <GrainChipRow state={grain} />
+      </div>
+    );
+  }
   const current = list.find((r) => r.ppg_id === selected) ?? list[0];
   return (
     <div className="mt-4 space-y-3 border-t border-slate-800 pt-4">
@@ -548,7 +563,14 @@ function SimulationVisuals({ runId, ready }: Props) {
       setSelected(list[0].ppg_id);
     }
   }, [list, selected]);
-  if (!list.length) return null;
+  if (!list.length) {
+    if (grain.comparisons.length === 0) return null;
+    return (
+      <div className="mt-4 border-t border-slate-800 pt-4">
+        <GrainChipRow state={grain} />
+      </div>
+    );
+  }
   const current = list.find((r) => r.ppg_id === selected) ?? list[0];
   return (
     <div className="mt-4 space-y-3 border-t border-slate-800 pt-4">
@@ -620,7 +642,14 @@ function OptimizationVisuals({ runId, ready }: Props) {
     grain.nameFor("optimization_results.json"),
     ready,
   );
-  if (!rows && !constraints) return null;
+  if (!rows && !constraints) {
+    if (grain.comparisons.length === 0) return null;
+    return (
+      <div className="mt-4 border-t border-slate-800 pt-4">
+        <GrainChipRow state={grain} />
+      </div>
+    );
+  }
   const recos = Array.isArray(rows) ? rows : [];
   const c = constraints && !("missing_columns" in constraints) ? constraints : null;
   const bindingRows: ConstraintBindingRow[] = Array.isArray(results)
@@ -671,7 +700,14 @@ function InsightsVisuals({ runId, ready, agentState }: Props) {
     grain.nameFor("insights_summary.json"),
     ready,
   );
-  if (!summary || "missing_columns" in summary) return null;
+  if (!summary || "missing_columns" in summary) {
+    if (grain.comparisons.length === 0) return null;
+    return (
+      <div className="mt-4 border-t border-slate-800 pt-4">
+        <GrainChipRow state={grain} />
+      </div>
+    );
+  }
   const hasPdf = Boolean(agentState?.artifacts?.some((a) => a.name === "report.pdf"));
   return (
     <div className="mt-4 border-t border-slate-800 pt-4">
@@ -703,7 +739,14 @@ function ValidationVisuals({ runId, ready }: Props) {
       setSelected(residualList[0].ppg_id);
     }
   }, [residualList, selected]);
-  if (!rows && !residuals) return null;
+  if (!rows && !residuals) {
+    if (grain.comparisons.length === 0) return null;
+    return (
+      <div className="mt-4 border-t border-slate-800 pt-4">
+        <GrainChipRow state={grain} />
+      </div>
+    );
+  }
   const current = residualList.find((r) => r.ppg_id === selected) ?? residualList[0];
   return (
     <div className="mt-4 space-y-5 border-t border-slate-800 pt-4">

@@ -61,7 +61,12 @@ export function EChart({ option, height = 240, className, ...rest }: EChartProps
   }, []);
 
   useEffect(() => {
-    inst.current?.setOption(option, true);
+    if (!inst.current) return;
+    try {
+      inst.current.setOption(option, true);
+    } catch (e) {
+      console.error("[EChart] setOption failed:", e);
+    }
   }, [option]);
 
   return (

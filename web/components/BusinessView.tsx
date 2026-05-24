@@ -44,7 +44,6 @@ interface PerPPG {
 interface InsightsSummary {
   headline?: string;
   kpis?: Kpis;
-  recommendations?: string[];
   per_ppg?: PerPPG[];
   validation?: Record<string, unknown>;
   objective?: string;
@@ -157,7 +156,11 @@ export function BusinessView({ runId }: { runId: string }) {
 
   const kpis = summary.kpis ?? {};
   const perPpg = summary.per_ppg ?? [];
-  const recommendations = summary.recommendations ?? [];
+  // Derive text recommendations from per-PPG rationale strings.
+  // (summary.recommendations is opt_table rows, not strings.)
+  const recommendations = perPpg
+    .filter((r) => r.rationale)
+    .map((r) => `${r.ppg_id}: ${r.rationale}`);
 
   // Sort per-PPG by revenue descending for the table.
   const sorted = [...perPpg].sort((a, b) => (b.revenue ?? 0) - (a.revenue ?? 0));
