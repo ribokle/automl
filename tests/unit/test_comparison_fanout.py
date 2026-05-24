@@ -48,17 +48,30 @@ def test_agents_for_depth_picks_deepest_stage() -> None:
     assert out == _COMPARISON_DOWNSTREAM_AGENTS
 
 
-def test_snapshot_mtimes_captures_files_only(tmp_path: Path) -> None:
+def test_snapshot_mtimes_captures_json_artifacts_only(tmp_path: Path) -> None:
     (tmp_path / "a.json").write_text("{}")
     (tmp_path / "b.csv").write_text("x")
     (tmp_path / "subdir").mkdir()
     (tmp_path / "subdir" / "c.json").write_text("{}")
 
     snap = _snapshot_mtimes(tmp_path)
-    # Only top-level files; subdirectories are skipped.
-    assert set(snap.keys()) == {"a.json", "b.csv"}
+    # Only top-level JSON artifacts; non-JSON files (b.csv) and
+    # subdirectories are skipped.
+    assert set(snap.keys()) == {"a.json"}
     for name, mtime in snap.items():
         assert isinstance(mtime, float)
+
+
+def test_snapshot_mtimes_skips_bookkeeping_and_warehouse(tmp_path: Path) -> None:
+    # These live in run_dir but must never be snapshotted / renamed:
+    # state.json is run bookkeeping; the warehouse is locked on Windows.
+    (tmp_path / "state.json").write_text("{}")
+    (tmp_path / "events.jsonl").write_text("")
+    (tmp_path / "warehouse.duckdb").write_text("")
+    (tmp_path / "modeling_results.json").write_text("{}")
+
+    snap = _snapshot_mtimes(tmp_path)
+    assert set(snap.keys()) == {"modeling_results.json"}
 
 
 def test_snapshot_mtimes_reflects_writes(tmp_path: Path) -> None:

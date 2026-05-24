@@ -202,7 +202,16 @@ async def execute(
     # primary grain. Per-grain artifacts get a double-underscore
     # suffix so they don't collide with the primary outputs.
     if run.status != RunStatus.failed:
-        await _run_comparison_grains(run, agent_mode=agent_mode)
+        try:
+            await _run_comparison_grains(run, agent_mode=agent_mode)
+        except Exception as exc:  # noqa: BLE001
+            # The comparison fan-out is an enhancement on top of a
+            # successful primary run; never let it tear down the run.
+            await bus.publish(
+                run.id,
+                run.run_dir,
+                {"type": "comparison_finished", "status": "failed", "error": str(exc)},
+            )
 
     if run.status != RunStatus.failed:
         run.status = RunStatus.completed
@@ -267,12 +276,40 @@ def _agents_for_depth(comparison_agents: list[str] | None) -> tuple[str, ...]:
 
 
 def _snapshot_mtimes(run_dir: "Path") -> dict[str, float]:
-    """Capture ``{name: mtime}`` for every file in ``run_dir``.
+    """Capture ``{name: mtime}`` for every comparison artifact in ``run_dir``.
 
     Used as a baseline so the comparison loop can detect which files
     each grain's pass produced or overwrote, and rename only those.
+    Restricted to JSON artifacts via :func:`_is_comparison_artifact` so
+    run bookkeeping (``state.json``), the event log, and the DuckDB
+    warehouse are never snapshotted, backed up, or renamed. The
+    warehouse in particular is held open by the run's connection and is
+    locked against copy on Windows.
     """
-    return {p.name: p.stat().st_mtime for p in run_dir.iterdir() if p.is_file()}
+    return {
+        p.name: p.stat().st_mtime
+        for p in run_dir.iterdir()
+        if p.is_file() and _is_comparison_artifact(p.name)
+    }
+
+
+# Run bookkeeping that lives in run_dir but is NOT a per-agent artifact.
+# These must never be snapshotted / backed up / renamed by the fan-out.
+_NON_ARTIFACT_FILES = frozenset({"state.json"})
+
+
+def _is_comparison_artifact(name: str) -> bool:
+    """True for per-agent JSON artifacts the fan-out may snapshot/rename.
+
+    Excludes run state, the event log (``events.jsonl``), the DuckDB
+    warehouse (``warehouse.duckdb`` and its WAL — locked on Windows),
+    and any binary report. Downstream cards read JSON, so restricting to
+    ``.json`` (minus ``state.json``) covers every per-grain panel while
+    sidestepping the warehouse lock.
+    """
+    if name in _NON_ARTIFACT_FILES:
+        return False
+    return name.endswith(".json")
 
 
 async def _run_comparison_grains(run: RunState, *, agent_mode: bool) -> None:
@@ -327,7 +364,12 @@ async def _run_comparison_grains(run: RunState, *, agent_mode: bool) -> None:
             continue
         src = run_dir / name
         backup = src.with_name(f"{src.stem}.__primary_backup__{src.suffix}")
-        shutil.copy2(src, backup)
+        try:
+            shutil.copy2(src, backup)
+        except OSError:
+            # A locked or vanished file can't be backed up; skip it
+            # rather than tearing down the whole comparison pass.
+            continue
         primary_backups[src] = backup
 
     # Snapshot AgentResult state for every agent we're about to re-run
@@ -367,76 +409,84 @@ async def _run_comparison_grains(run: RunState, *, agent_mode: bool) -> None:
     )
 
     total_agents = len(fanout_agents)
-    for grain in comparisons:
-        # Refresh the per-grain baseline so end-of-grain rename only
-        # picks up files this grain wrote (not files written by the
-        # previous comparison grain that already got renamed).
-        per_grain_baseline = _snapshot_mtimes(run_dir)
-        run.options["modelling_grain"] = grain
-        run.save()
-        failed_at: str | None = None
-        for idx, agent_name in enumerate(fanout_agents):
-            await bus.publish(
-                run.id,
-                run.run_dir,
-                {
-                    "type": "comparison_progress",
-                    "grain": grain,
-                    "stage": agent_name,
-                    "agent_index": idx,
-                    "total_agents": total_agents,
-                },
-            )
-            try:
-                await _build_agent(agent_name, agent_mode=agent_mode).run(run)
-            except Exception as exc:  # noqa: BLE001
-                failed_at = agent_name
+    try:
+        for grain in comparisons:
+            # Refresh the per-grain baseline so end-of-grain rename only
+            # picks up files this grain wrote (not files written by the
+            # previous comparison grain that already got renamed).
+            per_grain_baseline = _snapshot_mtimes(run_dir)
+            run.options["modelling_grain"] = grain
+            run.save()
+            failed_at: str | None = None
+            for idx, agent_name in enumerate(fanout_agents):
                 await bus.publish(
                     run.id,
                     run.run_dir,
                     {
-                        "type": "comparison_finished",
+                        "type": "comparison_progress",
                         "grain": grain,
-                        "status": "failed",
-                        "failed_at": agent_name,
-                        "error": str(exc),
+                        "stage": agent_name,
+                        "agent_index": idx,
+                        "total_agents": total_agents,
                     },
                 )
-                break
+                try:
+                    await _build_agent(agent_name, agent_mode=agent_mode).run(run)
+                except Exception as exc:  # noqa: BLE001
+                    failed_at = agent_name
+                    await bus.publish(
+                        run.id,
+                        run.run_dir,
+                        {
+                            "type": "comparison_finished",
+                            "grain": grain,
+                            "status": "failed",
+                            "failed_at": agent_name,
+                            "error": str(exc),
+                        },
+                    )
+                    break
 
-        # Rename touched files (new or mtime-changed) to per-grain
-        # suffix. Skip files whose basename already contains "__"
-        # (other grains' artifacts, backup markers) so repeated grains
-        # don't double-suffix.
-        for fpath in list(run_dir.iterdir()):
-            if not fpath.is_file():
-                continue
-            if "__" in fpath.stem:
-                continue
-            prior_mtime = per_grain_baseline.get(fpath.name)
-            if prior_mtime is not None and fpath.stat().st_mtime <= prior_mtime:
-                continue
-            dst = fpath.with_name(f"{fpath.stem}__{grain}{fpath.suffix}")
-            try:
-                fpath.rename(dst)
-            except OSError:
-                # Best-effort: if the target name is already taken
-                # (shouldn't happen in normal flow), leave the file in
-                # place rather than corrupting state.
-                pass
+            # Rename touched artifacts (new or mtime-changed) to the
+            # per-grain suffix. Only JSON artifacts are eligible (see
+            # _is_comparison_artifact) so state.json / events.jsonl /
+            # warehouse.duckdb are never renamed. Skip basenames that
+            # already contain "__" (other grains' artifacts, backup
+            # markers) so repeated grains don't double-suffix.
+            for fpath in list(run_dir.iterdir()):
+                if not fpath.is_file():
+                    continue
+                if not _is_comparison_artifact(fpath.name):
+                    continue
+                if "__" in fpath.stem:
+                    continue
+                prior_mtime = per_grain_baseline.get(fpath.name)
+                if prior_mtime is not None and fpath.stat().st_mtime <= prior_mtime:
+                    continue
+                dst = fpath.with_name(f"{fpath.stem}__{grain}{fpath.suffix}")
+                try:
+                    fpath.rename(dst)
+                except OSError:
+                    # Best-effort: if the target name is already taken
+                    # (shouldn't happen in normal flow), leave the file in
+                    # place rather than corrupting state.
+                    pass
 
-        if failed_at is None:
-            await bus.publish(
-                run.id,
-                run.run_dir,
-                {"type": "comparison_finished", "grain": grain, "status": "done"},
-            )
-
-    # Restore the primary canonical artifacts and AgentResults.
-    for canonical, backup in primary_backups.items():
-        if backup.exists():
-            shutil.move(str(backup), str(canonical))
-    for name, primary in primary_results.items():
-        run.agents[name] = primary
-    run.options["modelling_grain"] = primary_grain
-    run.save()
+            if failed_at is None:
+                await bus.publish(
+                    run.id,
+                    run.run_dir,
+                    {"type": "comparison_finished", "grain": grain, "status": "done"},
+                )
+    finally:
+        # Always restore the primary canonical artifacts, AgentResults,
+        # and grain selection — even if the loop raised — so the primary
+        # run's status and outputs are never left shadowed by a
+        # comparison pass.
+        for canonical, backup in primary_backups.items():
+            if backup.exists():
+                shutil.move(str(backup), str(canonical))
+        for name, primary in primary_results.items():
+            run.agents[name] = primary
+        run.options["modelling_grain"] = primary_grain
+        run.save()
