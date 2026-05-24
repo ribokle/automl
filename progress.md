@@ -1309,3 +1309,85 @@ disables until requirements pass and surfaces a one-line missing-hint.
   Live smoke: query endpoint serves grouped aggregations with filters,
   rejects unknown columns with structured 400s, and returns tidy JSON
   the renderer consumes directly.
+
+### Production hardening + Hoch-style modelling grain ✅
+
+The first real-data run on Dominick's toothpaste surfaced a clutch of
+failure modes that this workstream closes: 4 audit blockers
+(unbounded elasticity, silently-dropped constant features, opaque
+dry-run cost panel, validation conflating "skipped" with "failed"),
+3 majors (single chain-level grain, benchmark grain mismatch,
+PPG-cluster size opacity), and 3 minors (bare-except observability
+gaps, hidden competitor fallback, no price-variance gate).
+
+- Modelling robustness: log-log / semi-log fitters refit with
+  statsmodels RLM (Huber M-estimator) when ``|ε| > 6``; raw values
+  retained in ``diagnostics['elasticity_pre_robust']``. Winner selection
+  now prefers candidates with ``|ε| ≤ 8`` over wildly elastic ones
+  (PPG_AUTO_31's LightGBM ε=-10.88 is now de-winnered in favour of the
+  in-band OLS alternative). Modeling agent gates each cell on
+  ``std(log_price) ≥ 0.01`` so degenerate slices skip with a clear
+  reason rather than producing a meaningless coefficient.
+- Validation: empty-fold rolling-CV now emits ``verdict="skipped"``
+  instead of "fail" so headlines don't conflate "we never asked" with
+  "we asked and it broke"; per-fold WAPE is capped at 500% before
+  averaging so one rogue fold can't poison the mean.
+- Loader signal recovery: Dominick's loader emits
+  ``data/dominicks.coverage.json`` listing the loader-emitted constants
+  (display_flag / feature_flag / distribution_acv on Dominick's). The
+  feature_engineering agent surfaces ``constant_columns`` in its
+  summary so feature_refine drops aren't silent. When
+  ``competitor_price`` coverage drops below 50%, the agent falls back
+  to the within-PPG-week mean price of OTHER SKUs (new
+  ``core/features/competitor.py``) so ``log_price_gap`` stops
+  collapsing to zero.
+- Configurable modelling grain: ``--modelling-grain {ppg_week |
+  store_ppg_week | store_category_week}`` (also reads
+  ``MODELLING_GRAIN`` env) selects what cell to fit per model.
+  ``ppg_week`` (default) is the existing chain-aggregated grain;
+  ``store_ppg_week`` is Hoch (1995)-style — one fit per store-PPG cell
+  — and the modelling agent inverse-variance-pools per-store estimates
+  back to PPG so downstream agents see a familiar shape. Per-store
+  rows live in ``elasticity_per_ppg.json``; pooled rows in
+  ``elasticity_per_ppg_pooled.json``.
+- Observability: ppg_mapping emits cluster-size stats
+  (min/p25/median/p75/max/distribution + n_singletons/n_below_5).
+  Modeling writes a ``modeling_preflight.json`` artifact with per-cell
+  row count, log-price std, competitor coverage, and skip reason
+  before any fit runs. Cost rollup carries a ``provider`` field
+  (``dry_run``/``api``/``oauth``/``cli``) so the report panel can show
+  "Dry-run mode: tokens not billed" instead of mysterious zeros.
+  Bare ``except`` blocks in LLM-narration paths replaced with
+  ``self.log.warning`` (new ``Agent.log`` helper in
+  ``core/agents/base.py``).
+- Benchmark grain metadata:
+  ``core/benchmarks/data/elasticity.json`` now declares
+  ``grain_by_source`` (Hoch 1995 = ``chain``, Bijmolt 2005 =
+  ``meta_analysis``); ``CategoryBenchmark`` carries the grain
+  per-entry. New ``comparable(run_grain, bench)`` helper labels each
+  PPG row in ``validation_table.json`` as ``comparable`` or
+  ``indicative_only`` so operators see the apples-to-oranges risk.
+- Stage-2 demographics: a ``TODO(stage2)`` block in
+  ``core/models/bayes_hier.py`` sketches the data contract for the
+  follow-up phase (Hoch's regression of store elasticities on Kilts
+  trading-area demographics). Building it now is blocked on the Kilts
+  ``cust_dem.csv`` file that's not yet committed.
+
+Tests / verification:
+
+- ``tests/unit/test_grain_aggregation.py`` (7 tests) — shape contract
+  for each grain + ``build_features`` grain flow-through.
+- ``tests/unit/test_elasticity_bounds.py`` (3 tests) — RLM fallback
+  kicks in iff ``|ε| > 6``.
+- ``tests/unit/test_validation_skip_reasons.py`` (2 tests) —
+  ``skipped`` verdict on empty folds + WAPE cap.
+- ``tests/unit/test_competitor_proxy.py`` (3 tests) — within-PPG-week
+  proxy SQL at both grains.
+- ``tests/integration/test_hoch_grain_e2e.py`` — feature_engineering
+  → modeling slice at the Hoch grain emits per-cell rows AND a pooled
+  view; full suite 238 passed / 3 skipped / 0 regressions.
+- End-to-end Dominick's toothpaste run at default grain reproduces
+  median elasticity ≈ -1.32 (was -1.30 pre-hardening). No PPG winner
+  with ``|ε| > 8``. PPG_AUTO_31 LightGBM ε=-10.88 candidate now
+  retained in ``attempts[]`` but de-winnered in favour of an in-band
+  OLS alternative.

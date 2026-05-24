@@ -121,10 +121,13 @@ def test_evaluate_warns_when_cv_high() -> None:
     assert cv_check["status"] in ("warn", "fail")
 
 
-def test_evaluate_no_folds_returns_fail() -> None:
+def test_evaluate_no_folds_returns_skipped() -> None:
+    # Empty folds now indicate "we never produced a CV split" (insufficient
+    # rows), which is a distinct outcome from "we ran the CV and it failed".
     v = evaluate_ppg("PPG_X", [])
-    assert v.verdict == "fail"
+    assert v.verdict == "skipped"
     assert v.n_folds == 0
+    assert any(c["status"] == "skipped" for c in v.checks)
 
 
 def _seed_run(tmp_path: Path, frame: pd.DataFrame, modeling: dict, options: dict | None = None) -> RunState:

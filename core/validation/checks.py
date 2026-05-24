@@ -26,6 +26,12 @@ from statistics import mean, stdev
 
 from core.config import get_settings
 
+# One catastrophically-bad fold (e.g. predicting near zero on a holiday peak
+# week) can produce WAPE of 100+, which then poisons every aggregate metric.
+# We cap the per-fold contribution to mean/std at 500% and surface the count
+# of capped folds as a separate diagnostic.
+WAPE_FOLD_CAP = 5.0
+
 
 @dataclass
 class Verdict:
@@ -38,6 +44,7 @@ class Verdict:
     elasticity_std: float
     elasticity_cv: float
     n_folds: int
+    n_wape_capped: int = 0
     checks: list[dict] = field(default_factory=list)
 
 
@@ -59,9 +66,14 @@ def evaluate_ppg(
     """
     _t = get_settings().validation
     if not folds:
+        # Empty-fold case: the rolling-CV builder couldn't produce any
+        # train/test windows from this PPG's data (typically too few rows).
+        # Surface this as a `skipped` verdict instead of `fail`, so the
+        # downstream pass/warn/fail counts don't mistake "we never asked"
+        # for "we asked and got the wrong answer".
         return Verdict(
             ppg_id=ppg_id,
-            verdict="fail",
+            verdict="skipped",
             sign_stability=float("nan"),
             wape_mean=float("nan"),
             wape_std=float("nan"),
@@ -69,11 +81,15 @@ def evaluate_ppg(
             elasticity_std=float("nan"),
             elasticity_cv=float("nan"),
             n_folds=0,
-            checks=[{"name": "rolling_cv", "status": "fail", "detail": "no folds produced"}],
+            checks=[{"name": "rolling_cv", "status": "skipped", "detail": "no folds produced (insufficient rows for CV)"}],
         )
 
     elasticities = [float(f["own_elasticity"]) for f in folds]
-    wapes = [float(f["test_wape"]) for f in folds if math.isfinite(float(f["test_wape"]))]
+    raw_wapes = [float(f["test_wape"]) for f in folds if math.isfinite(float(f["test_wape"]))]
+    # Cap each fold's WAPE before averaging — a single 51,000% fold from a
+    # leverage-point misprediction should not drag the mean to uselessness.
+    n_wape_capped = sum(1 for w in raw_wapes if w > WAPE_FOLD_CAP)
+    wapes = [min(w, WAPE_FOLD_CAP) for w in raw_wapes]
     sign_hits = sum(
         1 for e in elasticities if (e * expected_sign) > 0
     )
@@ -131,6 +147,16 @@ def evaluate_ppg(
         )
         verdict = _worst(verdict, "warn")
 
+    if n_wape_capped:
+        checks.append(
+            {
+                "name": "wape_unstable",
+                "status": "warn",
+                "detail": f"{n_wape_capped}/{len(folds)} folds had WAPE>{WAPE_FOLD_CAP:.0%}; capped",
+            }
+        )
+        verdict = _worst(verdict, "warn")
+
     return Verdict(
         ppg_id=ppg_id,
         verdict=verdict,
@@ -141,5 +167,6 @@ def evaluate_ppg(
         elasticity_std=e_std,
         elasticity_cv=e_cv,
         n_folds=len(folds),
+        n_wape_capped=n_wape_capped,
         checks=checks,
     )

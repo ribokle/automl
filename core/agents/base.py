@@ -7,6 +7,7 @@ and delegates the real work to `_execute`.
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -30,6 +31,7 @@ class Agent:
             raise ValueError(f"{type(self).__name__}.name must be set")
         self.llm = llm or AnthropicClient()
         self._llm_calls: list[dict[str, Any]] = []
+        self.log = logging.getLogger(f"agent.{self.name}")
 
     async def emit(self, run: RunState, event_type: str, payload: dict[str, Any] | None = None) -> None:
         await bus.publish(run.id, run.run_dir, {"type": event_type, "agent": self.name, **(payload or {})})
@@ -58,6 +60,9 @@ class Agent:
         result.tokens_in += resp.tokens_in
         result.tokens_out += resp.tokens_out
         result.cost_usd += resp.cost_usd
+        # Last-provider-wins: every call in this agent uses the same client,
+        # so this is just recording which path was taken.
+        result.provider = resp.provider
         self._llm_calls.append(
             {
                 "label": label,
@@ -94,6 +99,10 @@ class Agent:
         result = run.agents[self.name]
         result.status = AgentStatus.running
         result.started_at = datetime.utcnow()
+        # Record the configured provider up-front so agents that never call
+        # the LLM still report a sensible value in the cost rollup.
+        if not result.provider:
+            result.provider = self.llm.provider.value
         await self.emit(run, "agent_started")
         try:
             await self._execute(run, result)

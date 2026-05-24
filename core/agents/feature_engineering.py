@@ -13,8 +13,10 @@ from pathlib import Path
 import pandas as pd
 
 from core.agents.base import Agent
+from core.config import get_settings
 from core.data.charts import feature_histograms
-from core.features.eda import ppg_week_aggregate
+from core.features.competitor import compute_competitor_proxy
+from core.features.eda import aggregate_features
 from core.features.engineering import ENGINEERED_COLUMNS, TARGET, build_features
 from core.orchestrator.state import AgentResult, ArtifactRef, RunState
 
@@ -39,15 +41,74 @@ class FeatureEngineeringAgent(Agent):
         duckdb_path = Path(run.duckdb_path)
         run_dir = Path(run.run_dir)
 
-        panel = await asyncio.to_thread(ppg_week_aggregate, duckdb_path)
-        await self.emit(run, "tool_called", {"tool": "ppg_week_aggregate", "rows": int(len(panel))})
+        # Resolve the modelling grain: per-run option override > global setting.
+        # Default is the historical ppg_week so existing tests stay green.
+        explicit_grain = run.options.get("modelling_grain")
+        grain = (
+            getattr(explicit_grain, "value", str(explicit_grain))
+            if explicit_grain
+            else get_settings().modelling_grain.value
+        )
+
+        panel = await asyncio.to_thread(
+            aggregate_features, duckdb_path, grain=grain
+        )
+        await self.emit(
+            run,
+            "tool_called",
+            {"tool": "aggregate_features", "grain": grain, "rows": int(len(panel))},
+        )
+
+        # If the loader didn't ship a competitor series, fall back to the
+        # within-PPG-week mean price of the other SKUs (Hoch et al. use a
+        # similar substitution; see core/features/competitor.py). At the
+        # store-grain we use the same chain-level proxy — it's still the
+        # cleanest signal of "what did the rest of the PPG cost this week".
+        comp_coverage = float(panel["competitor_price"].notna().mean()) if len(panel) else 0.0
+        if comp_coverage < 0.5:
+            self.log.warning(
+                "feature_engineering: competitor_price coverage %.0f%% — filling from within-PPG-week proxy",
+                comp_coverage * 100,
+            )
+            proxy = await asyncio.to_thread(compute_competitor_proxy, duckdb_path, grain="ppg_week")
+            if len(proxy):
+                proxy_idx = proxy.set_index(["ppg_id", "week_start"])["competitor_price"]
+                key_idx = pd.MultiIndex.from_arrays(
+                    [panel["ppg_id"], pd.to_datetime(panel["week_start"])]
+                )
+                mapped = pd.Series(proxy_idx.reindex(key_idx).to_numpy(), index=panel.index)
+                panel["competitor_price"] = panel["competitor_price"].fillna(mapped)
 
         feats = await asyncio.to_thread(build_features, panel)
+        # At the historical chain grain we drop grain_unit so feature_refine /
+        # modeling / validation see the same schema they always have.
+        # At a store-grain we keep it so modeling can loop over cells.
+        if grain == "ppg_week" and "grain_unit" in feats.columns:
+            feats = feats.drop(columns=["grain_unit"])
+        has_grain_unit = "grain_unit" in feats.columns
         await self.emit(
             run,
             "tool_called",
             {"tool": "build_features", "rows": int(len(feats)), "columns": len(ENGINEERED_COLUMNS)},
         )
+
+        # Flag columns that came out of build_features as constants — these
+        # will be dropped by feature_refine (correlation undefined on a
+        # constant), and seeing them here means the upstream loader didn't
+        # carry a real signal (display_flag / feature_flag / acv on
+        # Dominick's, for example). Surface them so the dashboard can
+        # render a "constant-by-design" badge instead of letting the drop
+        # happen silently.
+        constant_engineered: list[str] = []
+        for col in ENGINEERED_COLUMNS:
+            if col in feats.columns and feats[col].dropna().nunique() <= 1:
+                constant_engineered.append(col)
+        if constant_engineered:
+            self.log.warning(
+                "feature_engineering: %d engineered columns are constant on this panel: %s",
+                len(constant_engineered),
+                ", ".join(constant_engineered),
+            )
 
         features_path = run_dir / "features.parquet"
         await asyncio.to_thread(_to_parquet, feats, features_path)
@@ -56,9 +117,12 @@ class FeatureEngineeringAgent(Agent):
 
         summary = {
             "target": TARGET,
+            "grain": grain,
             "rows": int(len(feats)),
             "columns": ENGINEERED_COLUMNS,
+            "constant_columns": constant_engineered,
             "ppg_ids": sorted(feats["ppg_id"].unique().tolist()),
+            "n_grain_units": int(feats["grain_unit"].nunique()) if has_grain_unit else 1,
             "week_min": str(feats["week_start"].min()),
             "week_max": str(feats["week_start"].max()),
         }
@@ -97,6 +161,8 @@ class FeatureEngineeringAgent(Agent):
             "rows": int(len(feats)),
             "n_features": len(ENGINEERED_COLUMNS),
             "n_ppgs": int(feats["ppg_id"].nunique()),
+            "n_grain_units": summary["n_grain_units"],
+            "grain": grain,
             "format": features_path.suffix.lstrip("."),
         }
         result.reasoning = narrative

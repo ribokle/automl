@@ -134,11 +134,28 @@ class PPGMappingAgent(Agent):
                     }
                 )
 
+        cluster_sizes = sorted(int(g["n_skus"]) for g in per_ppg_summary)
+        if cluster_sizes:
+            n = len(cluster_sizes)
+            cluster_size_stats = {
+                "min": cluster_sizes[0],
+                "p25": cluster_sizes[int(n * 0.25)],
+                "median": cluster_sizes[n // 2],
+                "p75": cluster_sizes[int(n * 0.75)],
+                "max": cluster_sizes[-1],
+                "n_singletons": sum(1 for s in cluster_sizes if s == 1),
+                "n_below_5": sum(1 for s in cluster_sizes if s < 5),
+                "distribution": cluster_sizes,
+            }
+        else:
+            cluster_size_stats = {}
+
         mapping_blob = {
             "assignments": assignments.to_dict(orient="records"),
             "per_ppg": per_ppg_summary,
             "rationales": rationale_lookup,
             "table": table_rows,
+            "cluster_size_stats": cluster_size_stats,
         }
         mapping_path = run_dir / "ppg_mapping.json"
         mapping_path.write_text(json.dumps(mapping_blob, indent=2, default=str))

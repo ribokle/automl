@@ -31,6 +31,7 @@ class AgentCost:
     cost_usd: float
     duration_s: float | None
     duration_str: str
+    provider: str = ""
 
     def to_dict(self) -> dict:
         return {
@@ -41,6 +42,7 @@ class AgentCost:
             "cost_usd": self.cost_usd,
             "duration_s": self.duration_s,
             "duration_str": self.duration_str,
+            "provider": self.provider,
         }
 
 
@@ -51,6 +53,7 @@ class CostTotals:
     cost_usd: float
     duration_s: float
     duration_str: str
+    provider: str = ""
 
     def to_dict(self) -> dict:
         return {
@@ -59,6 +62,7 @@ class CostTotals:
             "cost_usd": self.cost_usd,
             "duration_s": self.duration_s,
             "duration_str": self.duration_str,
+            "provider": self.provider,
         }
 
 
@@ -85,6 +89,7 @@ def summarise_run(run: "RunState") -> tuple[list[AgentCost], CostTotals]:
     tot_in = tot_out = 0
     tot_cost = 0.0
     tot_seconds = 0.0
+    providers_seen: set[str] = set()
 
     for name, ar in run.agents.items():
         duration: float | None = None
@@ -101,17 +106,27 @@ def summarise_run(run: "RunState") -> tuple[list[AgentCost], CostTotals]:
                 cost_usd=ar.cost_usd,
                 duration_s=duration,
                 duration_str=_format_duration(duration),
+                provider=getattr(ar, "provider", "") or "",
             )
         )
         tot_in += ar.tokens_in
         tot_out += ar.tokens_out
         tot_cost += ar.cost_usd
+        prov = getattr(ar, "provider", "") or ""
+        if prov:
+            providers_seen.add(prov)
 
+    # If every recorded provider matched, surface it on the totals so the
+    # report header can show "Dry-run mode" without inspecting every row.
+    totals_provider = next(iter(providers_seen)) if len(providers_seen) == 1 else (
+        "mixed" if len(providers_seen) > 1 else ""
+    )
     totals = CostTotals(
         tokens_in=tot_in,
         tokens_out=tot_out,
         cost_usd=tot_cost,
         duration_s=tot_seconds,
         duration_str=_format_duration(tot_seconds) if tot_seconds > 0 else "—",
+        provider=totals_provider,
     )
     return per_agent, totals

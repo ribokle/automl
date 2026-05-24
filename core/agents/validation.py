@@ -26,6 +26,7 @@ import pandas as pd
 from core.agents.base import Agent
 from core.benchmarks.elasticity import (
     classify as classify_benchmark,
+    comparable as benchmark_comparable,
     load_elasticity_benchmarks,
 )
 from core.config import get_settings
@@ -49,11 +50,42 @@ SUPPORTED_MODELS = {"loglog_ols", "semilog_ols", "lightgbm"}
 DEFAULT_N_FOLDS = 4
 
 
+def _resolve_grain(run: RunState) -> str:
+    """The modelling grain that produced this run's elasticities."""
+    explicit = run.options.get("modelling_grain")
+    if explicit:
+        return getattr(explicit, "value", str(explicit))
+    return get_settings().modelling_grain.value
+
+
 def _load_modeling(run_dir: Path) -> dict:
     path = run_dir / "modeling_results.json"
     if not path.exists():
         raise RuntimeError("modeling_results.json missing — modeling must run first")
     return json.loads(path.read_text())
+
+
+def _ppg_modeling_rows(modeling: dict) -> list[dict]:
+    """Collapse the modelling per-PPG rows down to one row per PPG.
+
+    At the chain grain (ppg_week) there's already one row per PPG. At the
+    store grain we get N=stores×PPGs rows; pick the cell with the tightest
+    SE for each PPG so validation runs one rolling-CV per PPG (rather
+    than fanning out to per-store CVs the dashboards aren't sized for).
+    """
+    by_ppg: dict[str, dict] = {}
+    for row in modeling.get("per_ppg", []):
+        ppg_id = row["ppg_id"]
+        winner = row.get("winner") or {}
+        se = winner.get("std_err")
+        try:
+            se_f = float(se) if se is not None else float("inf")
+        except (TypeError, ValueError):
+            se_f = float("inf")
+        prev = by_ppg.get(ppg_id)
+        if prev is None or se_f < prev[1]:
+            by_ppg[ppg_id] = (row, se_f)
+    return [v[0] for v in by_ppg.values()]
 
 
 def _load_features(run_dir: Path) -> pd.DataFrame:
@@ -152,6 +184,7 @@ class ValidationAgent(Agent):
         controls = _load_controls(run_dir)
         ppg_categories = _load_ppg_categories(run_dir)
         benchmarks = load_elasticity_benchmarks()
+        run_grain = _resolve_grain(run)
 
         n_folds = int(
             (run.options.get("validation") or {}).get("n_folds", DEFAULT_N_FOLDS)
@@ -161,10 +194,18 @@ class ValidationAgent(Agent):
         flat_table: list[dict] = []
         skipped: list[dict] = []
 
-        for row in modeling.get("per_ppg", []):
+        modeling_rows = _ppg_modeling_rows(modeling)
+        has_grain_unit_feats = "grain_unit" in feats.columns
+        for row in modeling_rows:
             ppg_id = row["ppg_id"]
             winner = row.get("winner_model")
-            slice_ = feats[feats["ppg_id"] == ppg_id]
+            unit_id = row.get("grain_unit")
+            if has_grain_unit_feats and unit_id is not None:
+                slice_ = feats[
+                    (feats["ppg_id"] == ppg_id) & (feats["grain_unit"] == unit_id)
+                ]
+            else:
+                slice_ = feats[feats["ppg_id"] == ppg_id]
             if winner not in SUPPORTED_MODELS or slice_.empty:
                 skipped.append(
                     {
@@ -201,6 +242,7 @@ class ValidationAgent(Agent):
             category = ppg_categories.get(ppg_id)
             bench = benchmarks.lookup(category)
             bench_status = classify_benchmark(verdict.elasticity_mean, bench)
+            bench_comparable = benchmark_comparable(run_grain, bench)
             flat_table.append(
                 {
                     "ppg_id": ppg_id,
@@ -218,6 +260,8 @@ class ValidationAgent(Agent):
                     "benchmark_high": bench.hi if bench else None,
                     "benchmark_source": bench.source if bench else None,
                     "benchmark_category": bench.display_name if bench else None,
+                    "benchmark_grain": bench.grain if bench else None,
+                    "benchmark_comparable": bench_comparable,
                 }
             )
             await self.emit(
@@ -239,6 +283,12 @@ class ValidationAgent(Agent):
         n_pass = sum(1 for p in per_ppg if p["verdict"] == "pass")
         n_warn = sum(1 for p in per_ppg if p["verdict"] == "warn")
         n_fail = sum(1 for p in per_ppg if p["verdict"] == "fail")
+        n_skipped_cv = sum(1 for p in per_ppg if p["verdict"] == "skipped")
+        if n_skipped_cv:
+            self.log.warning(
+                "validation: %d PPGs skipped rolling-CV (insufficient rows)",
+                n_skipped_cv,
+            )
 
         n_in_benchmark = sum(1 for r in flat_table if r["benchmark_status"] == "in_band")
         n_out_benchmark = sum(
@@ -324,6 +374,7 @@ class ValidationAgent(Agent):
         result.outputs = {
             "n_validated": len(per_ppg),
             "n_skipped": len(skipped),
+            "n_skipped_cv": n_skipped_cv,
             "n_pass": n_pass,
             "n_warn": n_warn,
             "n_fail": n_fail,
@@ -335,11 +386,16 @@ class ValidationAgent(Agent):
         }
         if skipped:
             result.outputs["skipped"] = skipped
+        # n_evaluated excludes CV-skipped PPGs from the pass-rate denominator
+        # so a panel that's mostly too small for CV doesn't get a misleading
+        # "0% pass" headline.
+        n_evaluated = max(0, len(per_ppg) - n_skipped_cv)
+        skip_clause = f", {n_skipped_cv} skipped (low rows)" if n_skipped_cv else ""
         result.reasoning = headline or (
             f"Rolling-origin CV ({n_folds} folds): {n_pass} pass, {n_warn} warn, "
-            f"{n_fail} fail across {len(per_ppg)} PPGs."
+            f"{n_fail} fail{skip_clause} across {len(per_ppg)} PPGs."
         )
-        result.confidence = (n_pass / len(per_ppg)) if per_ppg else 0.0
+        result.confidence = (n_pass / n_evaluated) if n_evaluated else 0.0
 
     def _narrate(
         self, result: AgentResult, per_ppg: list[dict]
@@ -368,5 +424,6 @@ class ValidationAgent(Agent):
                 return "", []
             blob = json.loads(resp.text)
             return str(blob.get("headline", "")), list(blob.get("per_ppg", []))
-        except (json.JSONDecodeError, ValueError):
+        except (json.JSONDecodeError, ValueError) as exc:
+            self.log.warning("validation: LLM narrative parse failed: %s", exc)
             return "", []

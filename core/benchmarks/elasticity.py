@@ -33,9 +33,30 @@ class CategoryBenchmark:
     lo: float
     hi: float
     source: str
+    grain: str = "chain"  # "chain" (Hoch 1995) or "meta_analysis" (Bijmolt 2005)
 
     def contains(self, elasticity: float) -> bool:
         return self.lo <= float(elasticity) <= self.hi
+
+
+# Runs at the PPG grain pool ~10 SKUs per cell, which is a finer cut than
+# Hoch's chain-wide category measure. We still allow the comparison but tag
+# it "indicative_only" so the UI can show it as a soft check.
+_COMPARABLE = {"chain", "ppg_week"}
+
+
+def comparable(run_grain: str, bench: "CategoryBenchmark | None") -> str:
+    """How well does ``run_grain`` line up with the benchmark's measurement scale?"""
+    if bench is None:
+        return "no_benchmark"
+    if bench.grain == "meta_analysis":
+        return "indicative_only"
+    if run_grain in _COMPARABLE and bench.grain in _COMPARABLE:
+        return "comparable"
+    # store_ppg_week and store_category_week are finer than Hoch's chain
+    # benchmark — operators should compare the pooled-to-chain value, not
+    # individual store cells.
+    return "indicative_only"
 
 
 @dataclass(frozen=True)
@@ -45,6 +66,7 @@ class ElasticityBenchmarkTable:
     categories: dict[str, CategoryBenchmark]
     aliases: dict[str, str]
     sources: tuple[dict, ...]
+    grain_by_source: dict[str, str]
 
     def lookup(self, category: str | None) -> CategoryBenchmark | None:
         if not category:
@@ -68,6 +90,7 @@ def _normalise(s: str) -> str:
 @lru_cache(maxsize=1)
 def load_elasticity_benchmarks() -> ElasticityBenchmarkTable:
     blob = json.loads(_DATA_PATH.read_text())
+    grain_by_source: dict[str, str] = dict(blob["meta"].get("grain_by_source", {}))
     cats = {
         key: CategoryBenchmark(
             category_key=key,
@@ -76,6 +99,7 @@ def load_elasticity_benchmarks() -> ElasticityBenchmarkTable:
             lo=float(v["lo"]),
             hi=float(v["hi"]),
             source=v["source"],
+            grain=grain_by_source.get(v["source"], "chain"),
         )
         for key, v in blob["categories"].items()
     }
@@ -86,6 +110,7 @@ def load_elasticity_benchmarks() -> ElasticityBenchmarkTable:
         categories=cats,
         aliases=aliases,
         sources=tuple(blob["meta"].get("sources", [])),
+        grain_by_source=grain_by_source,
     )
 
 

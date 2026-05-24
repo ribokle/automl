@@ -15,7 +15,11 @@
     ],
     "grand_mean": -2.62,
     "grand_mean_source": "bijmolt_2005",
-    "band_method": "Mean +/- max(0.5, 0.3*|mean|); approximates a 2*SE envelope around Hoch (1995) point estimates."
+    "band_method": "Mean +/- max(0.5, 0.3*|mean|); approximates a 2*SE envelope around Hoch (1995) point estimates.",
+    "grain_by_source": {
+      "hoch_1995": "chain",
+      "bijmolt_2005": "meta_analysis"
+    }
   },
   "categories": {
     "analgesics":           {"display_name": "Analgesics",            "mean": -1.85, "lo": -2.41, "hi": -1.30, "source": "hoch_1995"},

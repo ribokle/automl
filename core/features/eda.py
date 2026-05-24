@@ -93,12 +93,39 @@ def missingness(df: pd.DataFrame) -> dict[str, float]:
 
 def ppg_week_aggregate(duckdb_path: Path, table: str = "main.panel") -> pd.DataFrame:
     """PPG × week roll-up used by the EDA / modelling stages as the canonical
-    analytics grain (collapses the store dimension)."""
-    con = duckdb.connect(str(duckdb_path))
-    try:
-        return con.execute(
-            f"""
+    analytics grain (collapses the store dimension).
+
+    Thin wrapper around :func:`aggregate_features` with the default
+    ``ppg_week`` grain — kept so existing call sites stay green. The
+    returned frame omits the ``grain_unit`` column at this grain to
+    preserve the historical shape every existing caller expects.
+    """
+    df = aggregate_features(duckdb_path, grain="ppg_week", table=table)
+    return df.drop(columns=["grain_unit"], errors="ignore")
+
+
+def aggregate_features(
+    duckdb_path: Path,
+    *,
+    grain: str = "ppg_week",
+    table: str = "main.panel",
+) -> pd.DataFrame:
+    """Aggregate the canonical panel to one of the supported modelling grains.
+
+    ``grain`` is one of:
+
+    - ``ppg_week``           — one row per (PPG, week); ``grain_unit`` = "chain".
+    - ``store_ppg_week``     — one row per (store, PPG, week); ``grain_unit``
+                              = store_id. Hoch-style per-store fits.
+    - ``store_category_week`` — one row per (store, category, week);
+                              ``grain_unit`` = store_id, ``ppg_id`` is the
+                              category label. Closest to Hoch (1995)'s
+                              actual paper grain.
+    """
+    if grain == "ppg_week":
+        sql = f"""
             SELECT
+              'chain' AS grain_unit,
               ppg_id,
               week_start,
               SUM(units) AS units,
@@ -112,9 +139,57 @@ def ppg_week_aggregate(duckdb_path: Path, table: str = "main.panel") -> pd.DataF
               AVG(competitor_price) AS competitor_price,
               MAX(CASE WHEN holiday IS NULL OR holiday = '' THEN 0 ELSE 1 END) AS is_holiday_week
             FROM {table}
-            GROUP BY 1, 2
-            ORDER BY 1, 2
-            """
-        ).df()
+            GROUP BY 1, 2, 3
+            ORDER BY 2, 3
+        """
+    elif grain == "store_ppg_week":
+        sql = f"""
+            SELECT
+              store_id AS grain_unit,
+              ppg_id,
+              week_start,
+              SUM(units) AS units,
+              SUM(units * price) / NULLIF(SUM(units), 0) AS price,
+              SUM(units * base_price) / NULLIF(SUM(units), 0) AS base_price,
+              AVG(discount_depth) AS discount_depth,
+              AVG(tpr_flag::DOUBLE) AS tpr_share,
+              AVG(display_flag::DOUBLE) AS display_share,
+              AVG(feature_flag::DOUBLE) AS feature_share,
+              AVG(distribution_acv) AS distribution_acv,
+              AVG(competitor_price) AS competitor_price,
+              MAX(CASE WHEN holiday IS NULL OR holiday = '' THEN 0 ELSE 1 END) AS is_holiday_week
+            FROM {table}
+            GROUP BY 1, 2, 3
+            ORDER BY 1, 2, 3
+        """
+    elif grain == "store_category_week":
+        sql = f"""
+            SELECT
+              store_id AS grain_unit,
+              category AS ppg_id,
+              week_start,
+              SUM(units) AS units,
+              SUM(units * price) / NULLIF(SUM(units), 0) AS price,
+              SUM(units * base_price) / NULLIF(SUM(units), 0) AS base_price,
+              AVG(discount_depth) AS discount_depth,
+              AVG(tpr_flag::DOUBLE) AS tpr_share,
+              AVG(display_flag::DOUBLE) AS display_share,
+              AVG(feature_flag::DOUBLE) AS feature_share,
+              AVG(distribution_acv) AS distribution_acv,
+              AVG(competitor_price) AS competitor_price,
+              MAX(CASE WHEN holiday IS NULL OR holiday = '' THEN 0 ELSE 1 END) AS is_holiday_week
+            FROM {table}
+            WHERE category IS NOT NULL
+            GROUP BY 1, 2, 3
+            ORDER BY 1, 2, 3
+        """
+    else:
+        raise ValueError(
+            f"unsupported grain {grain!r}; expected one of ppg_week, store_ppg_week, store_category_week"
+        )
+
+    con = duckdb.connect(str(duckdb_path))
+    try:
+        return con.execute(sql).df()
     finally:
         con.close()

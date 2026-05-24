@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 from pathlib import Path
 
@@ -27,16 +28,39 @@ def run(
         "--agent-mode/--no-agent-mode",
         help="Use LLM-backed agents (default) or force deterministic dry-run fallbacks across every stage.",
     ),
+    modelling_grain: str = typer.Option(
+        "",
+        "--modelling-grain",
+        help=(
+            "Modelling grain to fit demand at. One of ppg_week (default; current "
+            "behaviour), store_ppg_week (Hoch-style, one model per store-PPG), "
+            "store_category_week (Hoch 1995 paper grain). Empty means use the "
+            "MODELLING_GRAIN env var / global default."
+        ),
+    ),
 ) -> None:
     """Execute the full agentic pipeline end-to-end."""
     if not data.exists():
         console.print(f"[red]Data file not found: {data}[/red]")
         raise typer.Exit(code=1)
 
+    from core.config import ModellingGrain
+
+    options: dict = {"agent_mode": agent_mode}
+    if modelling_grain:
+        try:
+            options["modelling_grain"] = ModellingGrain(modelling_grain)
+        except ValueError:
+            allowed = ", ".join(g.value for g in ModellingGrain)
+            console.print(
+                f"[red]Invalid --modelling-grain {modelling_grain!r}; expected one of {allowed}[/red]"
+            )
+            raise typer.Exit(code=1)
+
     state = RunState.new(
         data_path=str(data.resolve()),
         run_dir=out / "tmp",
-        options={"agent_mode": agent_mode},
+        options=options,
     )
     run_dir = out / state.id
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -112,7 +136,7 @@ def prepare_dominicks(
     download them yourself (https://www.chicagobooth.edu/research/kilts) and
     drop the per-category CSVs anywhere under ``data/dominicks-raw/``.
     """
-    from core.data.loaders.dominicks import build_dominicks_panel
+    from core.data.loaders.dominicks import build_dominicks_panel, coverage_report
     from core.data.schema import REQUIRED_COLUMNS
 
     cat_list = (
@@ -139,6 +163,10 @@ def prepare_dominicks(
     out.parent.mkdir(parents=True, exist_ok=True)
     panel.to_csv(out, index=False)
 
+    coverage = coverage_report(panel)
+    coverage_path = out.parent / f"{out.stem}.coverage.json"
+    coverage_path.write_text(json.dumps(coverage, indent=2))
+
     n_skus = panel["sku"].nunique()
     n_stores = panel["store_id"].nunique()
     n_weeks = panel["week_start"].nunique()
@@ -149,6 +177,12 @@ def prepare_dominicks(
         f"  Categories: {cats}\n"
         f"  Date range: {panel['week_start'].min()} -> {panel['week_start'].max()}"
     )
+    if coverage["constant_columns"] or coverage["all_null_columns"]:
+        flat = coverage["constant_columns"] + coverage["all_null_columns"]
+        console.print(
+            f"[yellow]  Loader-emitted constants: {', '.join(flat)} "
+            f"(see {coverage_path.name})[/yellow]"
+        )
 
 
 if __name__ == "__main__":

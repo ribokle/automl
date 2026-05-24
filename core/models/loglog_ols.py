@@ -4,6 +4,14 @@ Fits ``log_units = α + β·log_price + Σ γᵢ·controlᵢ`` per PPG via stats
 OLS. β is the own-price elasticity directly. Returns an ``ElasticityFit``
 so the modelling agent can compare across PPGs and against semi-log
 alternatives.
+
+When the recovered elasticity exceeds ``ELASTICITY_SUSPECT_THRESHOLD``
+in absolute value, a robust Huber M-estimator (statsmodels RLM) is
+refit. Leverage points from promo weeks regularly drag an OLS slope
+into implausible territory (e.g. PPG_AUTO_31 ε=-19.55 on a 67-row
+panel); the robust refit usually pulls it back inside the plausibility
+band. The raw value is retained in ``diagnostics['elasticity_pre_robust']``
+so the UI can show the audit trail.
 """
 from __future__ import annotations
 
@@ -18,6 +26,7 @@ from core.models.shap_attribution import ols_shap_summary
 
 PRICE_COL = "log_price"
 TARGET = "log_units"
+ELASTICITY_SUSPECT_THRESHOLD = 6.0
 
 
 def _design(frame: pd.DataFrame, cols: list[str]) -> tuple[np.ndarray, np.ndarray]:
@@ -62,6 +71,25 @@ def fit_loglog(
         "adj_r_squared": float(model.rsquared_adj),
         "log_price_mean": float(np.mean(frame[PRICE_COL])),
     }
+
+    if abs(own_beta) > ELASTICITY_SUSPECT_THRESHOLD:
+        diagnostics["elasticity_pre_robust"] = own_beta
+        diagnostics["elasticity_pre_robust_se"] = own_se
+        try:
+            rlm = sm.RLM(y_train, X_train, M=sm.robust.norms.HuberT()).fit()
+            robust_beta = float(rlm.params[own_idx])
+            robust_se = float(rlm.bse[own_idx])
+            diagnostics["robust_refit"] = "huber_m"
+            diagnostics["elasticity_robust"] = robust_beta
+            own_beta = robust_beta
+            own_se = robust_se
+            coefs = dict(zip(["const", *cols], (float(v) for v in rlm.params)))
+            # RLM doesn't compute p-values the same way; surface t-stat magnitude.
+            diagnostics["robust_t"] = (
+                robust_beta / robust_se if robust_se > 0 else float("nan")
+            )
+        except (ValueError, np.linalg.LinAlgError) as exc:
+            diagnostics["robust_refit_error"] = str(exc)
     train_pred = model.predict(X_train)
     diagnostics["train_wape"] = wape_units(y_train, train_pred)
     diagnostics["shap"] = ols_shap_summary(coefs, frame, cols)

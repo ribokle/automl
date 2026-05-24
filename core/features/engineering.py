@@ -31,11 +31,21 @@ ENGINEERED_COLUMNS: list[str] = [
 
 
 def build_features(panel: pd.DataFrame) -> pd.DataFrame:
-    """Engineer per-PPG-week features. Drops the first 4 weeks per PPG to keep
-    only rows where every lagged feature is observed."""
+    """Engineer per-cell features. Drops the first 4 weeks per group to keep
+    only rows where every lagged feature is observed.
+
+    When the input panel carries a ``grain_unit`` column (from
+    :func:`core.features.eda.aggregate_features`), lags are computed
+    within ``(grain_unit, ppg_id)`` groups — i.e. per-store time series
+    when running the Hoch-style grain — and the column flows through to
+    the output. When absent, the function behaves exactly as before
+    (one group per PPG) so existing chain-level call sites stay green.
+    """
     df = panel.copy()
     df["week_start"] = pd.to_datetime(df["week_start"])
-    df.sort_values(["ppg_id", "week_start"], inplace=True)
+    has_grain = "grain_unit" in df.columns
+    group_keys = ["grain_unit", "ppg_id"] if has_grain else ["ppg_id"]
+    df.sort_values([*group_keys, "week_start"], inplace=True)
 
     df["log_units"] = np.log(df["units"].clip(lower=1.0))
     df["log_price"] = np.log(df["price"].clip(lower=0.01))
@@ -48,10 +58,10 @@ def build_features(panel: pd.DataFrame) -> pd.DataFrame:
     df["log_competitor_price"] = log_comp.fillna(df["log_price"])
     df["log_price_gap"] = df["log_price"] - df["log_competitor_price"]
 
-    by_ppg = df.groupby("ppg_id", group_keys=False)
-    df["lag1_log_price"] = by_ppg["log_price"].shift(1)
-    df["lag1_log_units"] = by_ppg["log_units"].shift(1)
-    df["lag4_log_price"] = by_ppg["log_price"].shift(4)
+    grouped = df.groupby(group_keys, group_keys=False)
+    df["lag1_log_price"] = grouped["log_price"].shift(1)
+    df["lag1_log_units"] = grouped["log_units"].shift(1)
+    df["lag4_log_price"] = grouped["log_price"].shift(4)
 
     week = df["week_start"].dt.isocalendar().week.astype(float)
     angle = 2.0 * np.pi * week / 52.0
@@ -59,6 +69,7 @@ def build_features(panel: pd.DataFrame) -> pd.DataFrame:
     df["week_cos"] = np.cos(angle)
     df["is_holiday_week"] = df["is_holiday_week"].astype(float)
 
-    keep = ["ppg_id", "week_start"] + ENGINEERED_COLUMNS
+    key_cols = (["grain_unit"] if has_grain else []) + ["ppg_id", "week_start"]
+    keep = key_cols + ENGINEERED_COLUMNS
     out = df[keep].dropna().reset_index(drop=True)
     return out

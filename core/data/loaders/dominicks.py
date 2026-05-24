@@ -210,6 +210,27 @@ def _build_one_category(
     return panel
 
 
+def coverage_report(panel: pd.DataFrame) -> dict[str, list[str]]:
+    """List columns the loader emitted with zero variance.
+
+    Dominick's movement files don't ship display / feature / ACV — the
+    loader hardcodes them so the canonical schema stays valid, but those
+    columns then carry no information for the modelling stage. Surfacing
+    them here lets the CLI warn and the EDA dashboard render a
+    "constant-by-design" badge instead of silently dropping them in
+    feature_refine.
+    """
+    constant: list[str] = []
+    all_null: list[str] = []
+    for col in panel.columns:
+        s = panel[col]
+        if s.isna().all():
+            all_null.append(col)
+        elif s.dropna().nunique() <= 1:
+            constant.append(col)
+    return {"constant_columns": sorted(constant), "all_null_columns": sorted(all_null)}
+
+
 def build_dominicks_panel(
     raw_dir: Path,
     categories: list[str] | None = None,

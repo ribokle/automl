@@ -25,6 +25,7 @@ from core.models.shap_attribution import ols_shap_summary
 TARGET = "log_units"
 LOG_PRICE = "log_price"
 PRICE = "price"
+ELASTICITY_SUSPECT_THRESHOLD = 6.0
 
 
 def _ensure_price(frame: pd.DataFrame) -> pd.DataFrame:
@@ -77,6 +78,7 @@ def fit_semilog(
     elasticity_se = beta_se * p_mean
 
     coefs = dict(zip(["const", *cols], (float(v) for v in model.params)))
+    p_value = float(model.pvalues[own_idx])
 
     diagnostics: dict = {
         "aic": float(model.aic),
@@ -87,6 +89,26 @@ def fit_semilog(
         "train_wape": wape_units(y_train, model.predict(X_train)),
         "shap": ols_shap_summary(coefs, train, cols),
     }
+
+    if abs(elasticity) > ELASTICITY_SUSPECT_THRESHOLD:
+        diagnostics["elasticity_pre_robust"] = elasticity
+        diagnostics["elasticity_pre_robust_se"] = elasticity_se
+        try:
+            rlm = sm.RLM(y_train, X_train, M=sm.robust.norms.HuberT()).fit()
+            robust_beta = float(rlm.params[own_idx])
+            robust_se = float(rlm.bse[own_idx])
+            elasticity = robust_beta * p_mean
+            elasticity_se = robust_se * p_mean
+            beta = robust_beta
+            coefs = dict(zip(["const", *cols], (float(v) for v in rlm.params)))
+            diagnostics["robust_refit"] = "huber_m"
+            diagnostics["elasticity_robust"] = elasticity
+            diagnostics["beta_price_robust"] = robust_beta
+            diagnostics["robust_t"] = (
+                robust_beta / robust_se if robust_se > 0 else float("nan")
+            )
+        except (ValueError, np.linalg.LinAlgError) as exc:
+            diagnostics["robust_refit_error"] = str(exc)
     if test is not None and len(test):
         test_p = _ensure_price(test)
         y_test, X_test = _design(test_p, cols)
@@ -103,7 +125,7 @@ def fit_semilog(
         model="semilog_ols",
         own_elasticity=elasticity,
         std_err=elasticity_se,
-        p_value=float(model.pvalues[own_idx]),
+        p_value=p_value,
         r_squared=float(model.rsquared),
         n_obs=int(model.nobs),
         controls=usable,

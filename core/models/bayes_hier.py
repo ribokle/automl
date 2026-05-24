@@ -18,6 +18,27 @@ When ``τ²`` collapses to zero (no detectable heterogeneity), every PPG is
 shrunk all the way to ``μ̂`` (complete pooling). When ``τ²`` is large
 relative to sampling variance, shrinkage vanishes and each PPG retains its
 own estimate.
+
+TODO(stage2): Hoch (1995)'s famous second-stage model regresses store-
+level elasticities on trading-area demographics (income, ethnicity,
+education, family size, distance-to-warehouse) — when running at the
+``store_ppg_week`` grain we'll have N=stores×PPGs first-stage estimates
+ready to feed into that. The follow-up phase needs:
+
+  1. ``data/dominicks-raw/cust_dem.csv`` (Kilts customer-demographics file
+     — separate download, gitignored under the same Kilts agreement that
+     covers the panel data).
+  2. A new helper :func:`stage2_demographics` that joins per-store
+     elasticities from the modelling-results frame against the
+     demographic table and fits an OLS with HC3 robust standard errors.
+  3. A ``stage2_demographics.json`` artefact surfacing each demographic
+     coefficient's sign, magnitude, and confidence band so the UI can
+     render the same "demographic determinants" panel Hoch's paper
+     popularised.
+
+Deferred from the production-hardening plan after explicit operator
+scoping; building it now would require demographic data that's not yet
+committed and a dashboard widget that doesn't exist.
 """
 from __future__ import annotations
 
