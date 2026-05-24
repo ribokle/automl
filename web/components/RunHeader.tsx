@@ -41,37 +41,66 @@ export function RunHeader({ runId, runStatus, agents, startedAt }: Props) {
       ? `running · ${formatDisplayName(running)}`
       : runStatus;
 
+  function jumpToAwaiting() {
+    if (!awaiting) return;
+    const el = document.getElementById(`agent-${awaiting}`);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }
+
   return (
-    <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="text-xs uppercase tracking-wider text-slate-500">Run</p>
-          <h1 className="font-mono text-lg text-slate-200">{runId}</h1>
-        </div>
-        <div className="flex items-center gap-3">
-          <span className={`rounded-full border px-3 py-1 text-xs font-medium ${style.pill}`}>
-            {currentLabel}
-          </span>
-          <div className="text-right text-xs text-slate-400">
-            <div>
-              <span className="text-slate-500">Elapsed</span>{" "}
-              <span className="font-mono text-slate-200">{elapsed(startedAt, agents)}</span>
-            </div>
-            <div>
-              <span className="text-slate-500">Progress</span>{" "}
-              <span className="font-mono text-slate-200">
-                {done}/{total}
-              </span>
+    <div className="space-y-3">
+      <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-xs uppercase tracking-wider text-slate-500">Run</p>
+            <h1 className="font-mono text-lg text-slate-200">{runId}</h1>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className={`rounded-full border px-3 py-1 text-xs font-medium ${style.pill}`}>
+              {currentLabel}
+            </span>
+            <div className="text-right text-xs text-slate-400">
+              <div>
+                <span className="text-slate-500">Elapsed</span>{" "}
+                <span className="font-mono text-slate-200">{elapsed(startedAt, agents)}</span>
+              </div>
+              <div>
+                <span className="text-slate-500">Progress</span>{" "}
+                <span className="font-mono text-slate-200">
+                  {done}/{total}
+                </span>
+              </div>
             </div>
           </div>
         </div>
+        <div className="mt-4 h-2 w-full overflow-hidden rounded-full bg-slate-800">
+          <div
+            className="h-full bg-emerald-500/70 transition-all duration-500"
+            style={{ width: `${pct}%` }}
+          />
+        </div>
       </div>
-      <div className="mt-4 h-2 w-full overflow-hidden rounded-full bg-slate-800">
-        <div
-          className="h-full bg-emerald-500/70 transition-all duration-500"
-          style={{ width: `${pct}%` }}
-        />
-      </div>
+
+      {awaiting && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-purple-500/40 bg-purple-500/10 px-4 py-3">
+          <div className="text-sm text-purple-100">
+            <span className="font-semibold">Approval required:</span>{" "}
+            <span className="font-mono">{formatDisplayName(awaiting)}</span>
+            <span className="ml-2 text-xs text-purple-300/80">
+              the pipeline is paused — review the panel below to continue.
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={jumpToAwaiting}
+            className="rounded border border-purple-400/60 bg-purple-500/20 px-3 py-1 text-xs font-medium text-purple-100 hover:bg-purple-500/30"
+          >
+            Jump to approval →
+          </button>
+        </div>
+      )}
     </div>
   );
 }

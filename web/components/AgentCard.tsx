@@ -30,6 +30,17 @@ interface Props {
 
 export function AgentCard({ runId, agent, index, status, events, agentState, isLast }: Props) {
   const [open, setOpen] = useState(status === "running" || status === "awaiting_approval" || status === "failed");
+  // Auto-open when status transitions to awaiting_approval (the useState
+  // initial value above only fires on mount, but the status may flip
+  // later via SSE). The disclosure is irrelevant for the approval block
+  // itself — that sits outside it — but opening the card guarantees the
+  // approve button is in the viewport when the user clicks through from
+  // the header banner's "Jump to approval" affordance.
+  useEffect(() => {
+    if (status === "awaiting_approval" || status === "failed") {
+      setOpen(true);
+    }
+  }, [status]);
   const meta = AGENT_META[agent];
   const style = STATUS_STYLE[status];
 
@@ -89,7 +100,7 @@ export function AgentCard({ runId, agent, index, status, events, agentState, isL
   }
 
   return (
-    <div className="relative pl-10">
+    <div id={`agent-${agent}`} className="relative scroll-mt-6 pl-10">
       <div className="absolute left-0 top-0 flex h-full flex-col items-center">
         <div
           className={`flex h-7 w-7 items-center justify-center rounded-full ring-4 ${style.ring} ${style.dot} text-[10px] font-bold text-slate-900`}
@@ -104,7 +115,7 @@ export function AgentCard({ runId, agent, index, status, events, agentState, isL
           status === "running"
             ? "border-amber-500/30"
             : status === "awaiting_approval"
-              ? "border-purple-500/30"
+              ? "border-purple-500/30 ring-2 ring-purple-500/20"
               : status === "failed"
                 ? "border-rose-500/30"
                 : status === "done"

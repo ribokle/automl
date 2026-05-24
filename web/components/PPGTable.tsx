@@ -2,15 +2,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-import { approveAgent, getPPGMappingTable, getPPGSelection, rejectAgent } from "@/lib/api";
+import { getPPGMappingTable, getPPGSelection } from "@/lib/api";
 import type { PPGRow, PPGSelectionRow, RunEvent } from "@/lib/types";
 
 interface Props {
   runId: string;
   events: RunEvent[];
 }
-
-type ApprovalState = "idle" | "awaiting" | "approved" | "rejected" | "submitting";
 
 function confidenceColor(conf: number): string {
   if (conf >= 0.9) return "bg-emerald-900/40 text-emerald-200";
@@ -21,24 +19,10 @@ function confidenceColor(conf: number): string {
 export function PPGTable({ runId, events }: Props) {
   const [rows, setRows] = useState<PPGRow[] | null>(null);
   const [selection, setSelection] = useState<PPGSelectionRow[] | null>(null);
-  const [approval, setApproval] = useState<ApprovalState>("idle");
-  const [pendingAgent, setPendingAgent] = useState<string | null>(null);
 
-  // Derive approval state from the event stream.
-  useEffect(() => {
-    for (const e of events) {
-      if (e.type === "approval_required" && e.agent === "ppg_mapping") {
-        setApproval((s) => (s === "approved" || s === "rejected" ? s : "awaiting"));
-        setPendingAgent("ppg_mapping");
-      }
-      if (e.type === "approval_resolved" && e.agent === "ppg_mapping") {
-        setApproval(e.approved ? "approved" : "rejected");
-        setPendingAgent(null);
-      }
-    }
-  }, [events]);
-
-  // Re-fetch the mapping table whenever ppg_mapping finishes.
+  // Re-fetch the mapping table whenever ppg_mapping finishes. Approval
+  // lives in AgentCard's grain selector panel — this component just
+  // renders the table.
   const mappingFinishedTs = useMemo(() => {
     const last = [...events].reverse().find(
       (e) => e.type === "agent_finished" && e.agent === "ppg_mapping",
@@ -79,28 +63,6 @@ export function PPGTable({ runId, events }: Props) {
     };
   }, [runId, selectionFinishedTs]);
 
-  async function handleApprove() {
-    if (!pendingAgent) return;
-    setApproval("submitting");
-    try {
-      await approveAgent(runId, pendingAgent);
-      setApproval("approved");
-    } catch {
-      setApproval("awaiting");
-    }
-  }
-
-  async function handleReject() {
-    if (!pendingAgent) return;
-    setApproval("submitting");
-    try {
-      await rejectAgent(runId, pendingAgent);
-      setApproval("rejected");
-    } catch {
-      setApproval("awaiting");
-    }
-  }
-
   if (!rows) return null;
 
   const grouped = new Map<string, PPGRow[]>();
@@ -114,19 +76,12 @@ export function PPGTable({ runId, events }: Props) {
 
   return (
     <section className="mt-6 rounded-lg border border-slate-800 bg-slate-950/40 p-4">
-      <header className="mb-3 flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-semibold">Price-Pack Groups</h2>
-          <p className="text-xs text-slate-400">
-            {grouped.size} PPGs over {rows.length} SKUs - mean confidence{" "}
-            {(rows.reduce((s, r) => s + r.confidence, 0) / rows.length).toFixed(2)}
-          </p>
-        </div>
-        <ApprovalControls
-          state={approval}
-          onApprove={handleApprove}
-          onReject={handleReject}
-        />
+      <header className="mb-3">
+        <h2 className="text-lg font-semibold">Price-Pack Groups</h2>
+        <p className="text-xs text-slate-400">
+          {grouped.size} PPGs over {rows.length} SKUs - mean confidence{" "}
+          {(rows.reduce((s, r) => s + r.confidence, 0) / rows.length).toFixed(2)}
+        </p>
       </header>
       <div className="space-y-3">
         {Array.from(grouped.entries()).map(([ppg_id, members]) => {
@@ -205,41 +160,3 @@ export function PPGTable({ runId, events }: Props) {
   );
 }
 
-function ApprovalControls({
-  state,
-  onApprove,
-  onReject,
-}: {
-  state: ApprovalState;
-  onApprove: () => void;
-  onReject: () => void;
-}) {
-  if (state === "approved") {
-    return <span className="rounded bg-emerald-900/40 px-2 py-1 text-xs text-emerald-200">approved</span>;
-  }
-  if (state === "rejected") {
-    return <span className="rounded bg-rose-900/40 px-2 py-1 text-xs text-rose-200">rejected</span>;
-  }
-  if (state === "awaiting" || state === "submitting") {
-    const disabled = state === "submitting";
-    return (
-      <div className="flex gap-2">
-        <button
-          onClick={onApprove}
-          disabled={disabled}
-          className="rounded bg-emerald-700 px-3 py-1 text-xs font-medium text-white hover:bg-emerald-600 disabled:opacity-50"
-        >
-          Approve mapping
-        </button>
-        <button
-          onClick={onReject}
-          disabled={disabled}
-          className="rounded bg-slate-700 px-3 py-1 text-xs text-slate-200 hover:bg-slate-600 disabled:opacity-50"
-        >
-          Reject
-        </button>
-      </div>
-    );
-  }
-  return null;
-}
