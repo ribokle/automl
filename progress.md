@@ -1668,15 +1668,42 @@ casing.
 **Tests**
 - `test_library_ml_nonparam.py`. Full unit suite: 300 passed, 2 skipped.
 
-### Phase 8 — Remaining families — DEFERRED (need a non-per-cell path)
-These don't fit the per-cell, optimisation-feeding loop and are a separate
-design effort:
-- **Forecast-oriented** (ARIMAX/SARIMAX/ETS/Holt-Winters/state-space/Prophet/
-  TBATS, DeepAR/LSTM/TFT/N-BEATS): produce a `ForecastBlock`, not a price-sweep
-  model the optimiser can ladder. Belong to the `FORECAST` problem path.
+### Phase 8d — FORECAST problem path + time-series family ✅
+**Status:** complete. Time-series models fit per-cell and produce forecasts on a
+dedicated FORECAST path, distinct from the price-optimisation flow.
+
+**Backend**
+- New `timeseries` plugins (statsmodels, base dep): `arimax`, `sarimax`
+  (seasonal, auto-falls-back to non-seasonal on short windows), `state_space`
+  (UnobservedComponents) — all emit a `ForecastBlock` AND a log_price-exog
+  elasticity; `ets`, `holt_winters` — forecast-only. Optional: `prophet`,
+  `tbats` (graceful skip). Shared `_statsmodels_ts` helper.
+- `core/models/router/escalation.py:run_forecast_escalation` ranks candidates
+  by hold-out forecast WAPE (keeps any model that produced a forecast;
+  elasticity optional). `rules.py` FORECAST preferences now pick the TS family.
+- `core/agents/modeling.py`: when `router.default_problem_type == "forecast"`,
+  `_forecast_one_ppg_routed` runs the forecast escalation and the agent writes
+  a new `forecasts.json` artifact (per-PPG `ForecastBlock` + winning model +
+  hold-out WAPE + elasticity when available). TS winners aren't price-sweepable
+  so they're intentionally absent from `PREDICTABLE_MODELS`; the existing
+  artifact collectors + downstream agents skip them gracefully.
+
+**Tests**
+- `test_library_timeseries.py` (forecast horizon + WAPE; exog models recover
+  negative elasticity; smoothing models have none; prophet/tbats skip clean),
+  `test_modeling_forecast.py` (forecast-mode run writes `forecasts.json`).
+  Full unit suite: 311 passed, 5 skipped (optional deps).
+
+**Verification**
+- `router_enabled=true, default_problem_type=forecast` on a synthetic seasonal
+  panel: ARIMAX wins both PPGs, horizon-26 forecasts written, elasticities
+  recovered (-1.49 vs truth -1.5, -2.03 vs -2.0).
+
+### Phase 8 — Still deferred (need a multi-entity path)
 - **Multi-entity** (panel FE/RE, IV/2SLS, Double-ML, demand systems
   logit/AIDS/BLP, VARX, GNN, hierarchical Bayes via pymc): need a multi-PPG /
   multi-store frame passed to the plugin, not a single PPG slice.
-- **GAM** (pygam): per-cell but optional dep; straightforward follow-up.
-The registry + `ModelResult`(forecast/cross-price) + capability flags already
-accommodate these; wiring is the remaining work.
+- **Deep sequence models** (DeepAR/LSTM/GRU/TFT/N-BEATS): forecast-path models
+  needing torch; slot onto the FORECAST path now that it exists.
+The registry + `ModelResult` (forecast/cross-price) + capability flags already
+accommodate these.

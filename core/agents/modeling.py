@@ -41,10 +41,10 @@ from core.models.lightgbm_model import fit_lightgbm
 from core.models.loglog_ols import fit_loglog
 from core.models.metrics import chronological_split
 from core.models.predictor import build_predictor
-from core.models.router.escalation import run_escalation
+from core.models.router.escalation import run_escalation, run_forecast_escalation
 from core.models.router.llm_router import LLMRouter
 from core.models.router.rules import DeterministicRouter
-from core.models.result import ProblemType
+from core.models.result import ProblemType, to_elasticity_fit
 from core.models.semilog_ols import fit_semilog
 from core.orchestrator.state import AgentResult, ArtifactRef, RunState
 
@@ -258,6 +258,65 @@ def _fit_one_ppg_routed(
     return row
 
 
+def _forecast_one_ppg_routed(
+    ppg_id: str,
+    frame: pd.DataFrame,
+    controls: list[str],
+    candidates: list[str],
+    *,
+    grain: str,
+    hparams: dict[str, dict],
+    max_candidates: int,
+    rng_seed: int,
+) -> tuple[dict, dict | None]:
+    """Forecast-problem variant: rank candidates by hold-out forecast WAPE and
+    return (modeling row, forecast entry). The winner may carry an elasticity
+    (ARIMAX/SARIMAX/state-space) or be forecast-only (ETS/Holt-Winters)."""
+    train, test = chronological_split(frame, test_ratio=0.2)
+    ctx = FitContext(
+        ppg_id=ppg_id,
+        controls=controls,
+        test=test,
+        grain=grain,
+        problem_type=ProblemType.FORECAST,
+        rng_seed=rng_seed,
+    )
+    fc = run_forecast_escalation(
+        candidates, train, ctx, max_candidates=max_candidates, hparams=hparams
+    )
+    winner = fc.winner
+    ef = to_elasticity_fit(winner) if winner else None
+    row: dict = {
+        "ppg_id": ppg_id,
+        "winner_model": winner.model if winner else "no_forecast",
+        "sign_retry_fired": False,
+        "attempts": [
+            {"model": a.model, "diagnostics": {"test_wape": a.diagnostics.get("test_wape")}}
+            for a in fc.attempts
+        ],
+        "winner": ef.to_dict() if ef else None,
+        "n_train": int(len(train)),
+        "n_test": int(len(test)),
+        "router": {
+            "problem_type": ProblemType.FORECAST.value,
+            "candidates": fc.candidates,
+            "errors": fc.errors,
+        },
+    }
+    if winner is None:
+        row["skip_reason"] = "router_no_forecast"
+    entry: dict | None = None
+    if winner is not None and winner.forecast is not None:
+        entry = {
+            "ppg_id": ppg_id,
+            "model": winner.model,
+            "test_wape": winner.diagnostics.get("test_wape"),
+            "own_elasticity": winner.own_elasticity,
+            "forecast": winner.forecast.to_dict(),
+        }
+    return row, entry
+
+
 class ModelingAgent(Agent):
     name = "modeling"
 
@@ -271,8 +330,10 @@ class ModelingAgent(Agent):
         grain_str = settings.modelling_grain.value
         dry_run = self.llm.provider.value == "dry_run"
         problem = ProblemType(rtr.default_problem_type)
+        is_forecast = routed and problem == ProblemType.FORECAST
         eff_enabled = _effective_enabled(lib) if routed else set()
         router_decisions: list[dict] = []
+        forecasts: list[dict] = []
 
         feats = await asyncio.to_thread(_load_features, run_dir)
         eligible = _load_eligible_ppgs(run_dir)
@@ -401,20 +462,36 @@ class ModelingAgent(Agent):
                             "profile": prof.to_dict(),
                         }
                     )
-                    row = await asyncio.to_thread(
-                        _fit_one_ppg_routed,
-                        ppg_id,
-                        slice_,
-                        controls,
-                        candidates,
-                        grain=grain_str,
-                        problem=problem,
-                        hparams=hparams,
-                        max_candidates=lib.max_candidates,
-                        magnitude_ceiling=lib.winner_magnitude_ceiling,
-                        wape_floor=lib.wape_escalate_floor,
-                        rng_seed=lib.rng_seed,
-                    )
+                    if is_forecast:
+                        row, fc_entry = await asyncio.to_thread(
+                            _forecast_one_ppg_routed,
+                            ppg_id,
+                            slice_,
+                            controls,
+                            candidates,
+                            grain=grain_str,
+                            hparams=hparams,
+                            max_candidates=lib.max_candidates,
+                            rng_seed=lib.rng_seed,
+                        )
+                        if fc_entry is not None:
+                            fc_entry["grain_unit"] = unit_id
+                            forecasts.append(fc_entry)
+                    else:
+                        row = await asyncio.to_thread(
+                            _fit_one_ppg_routed,
+                            ppg_id,
+                            slice_,
+                            controls,
+                            candidates,
+                            grain=grain_str,
+                            problem=problem,
+                            hparams=hparams,
+                            max_candidates=lib.max_candidates,
+                            magnitude_ceiling=lib.winner_magnitude_ceiling,
+                            wape_floor=lib.wape_escalate_floor,
+                            rng_seed=lib.rng_seed,
+                        )
                 else:
                     row = await asyncio.to_thread(_fit_one_ppg, ppg_id, slice_, controls)
                 row["grain_unit"] = unit_id
@@ -507,6 +584,24 @@ class ModelingAgent(Agent):
                 name=preflight_path.name,
             )
         )
+
+        if is_forecast:
+            forecasts_path = run_dir / "forecasts.json"
+            forecasts_path.write_text(
+                json.dumps(
+                    {"problem_type": problem.value, "n_ppg": len(forecasts), "per_ppg": forecasts},
+                    indent=2,
+                    default=float,
+                )
+            )
+            result.artifacts.append(
+                ArtifactRef(
+                    path=str(forecasts_path),
+                    mime="application/json",
+                    agent=self.name,
+                    name=forecasts_path.name,
+                )
+            )
 
         if routed:
             router_path = run_dir / "router_decision.json"

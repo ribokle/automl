@@ -19,6 +19,7 @@ from core.models.library import (  # noqa: F401,E402
     ml_nonparam,
     regularized,
     robust_quantile,
+    timeseries,
     trees,
 )
 
@@ -29,7 +30,6 @@ for _family in (
     "causal",
     "discrete_choice",
     "bayesian",
-    "timeseries",
     "deep",
     "promo",
 ):

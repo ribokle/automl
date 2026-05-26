@@ -47,10 +47,11 @@ def test_large_n_prefers_loglog_first() -> None:
     assert out[0] == "loglog_ols"
 
 
-def test_forecast_drops_unavailable_and_keeps_tail() -> None:
+def test_forecast_prefers_time_series_and_keeps_tail() -> None:
     router = DeterministicRouter()
     out = router.select(ProblemType.FORECAST, _profile(seasonality_detected=True))
-    assert out[0] == "lightgbm"  # sarimax/ets/prophet not registered -> dropped
+    assert out[0] == "sarimax"  # statsmodels TS models are available
+    assert "ets" in out
     assert "loglog_ols" in out  # legacy tail always present
 
 

@@ -17,7 +17,7 @@ import pandas as pd
 from core.models.base import ElasticityFit
 from core.models.library import registry
 from core.models.library.base import FitContext
-from core.models.result import to_elasticity_fit
+from core.models.result import ModelResult, to_elasticity_fit
 from core.models.selection import fit_acceptable, pick_winner
 
 
@@ -72,4 +72,61 @@ def run_escalation(
             break
     if res.attempts:
         res.winner = pick_winner(res.attempts, magnitude_ceiling=magnitude_ceiling)
+    return res
+
+
+@dataclass
+class ForecastResult:
+    candidates: list[str]
+    attempts: list[ModelResult] = field(default_factory=list)
+    winner: ModelResult | None = None
+    errors: dict[str, str] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "candidates": list(self.candidates),
+            "attempts": [
+                {"model": a.model, "test_wape": a.diagnostics.get("test_wape")}
+                for a in self.attempts
+            ],
+            "winner_model": self.winner.model if self.winner else None,
+            "errors": dict(self.errors),
+        }
+
+
+def _forecast_wape(result: ModelResult) -> float:
+    val = result.diagnostics.get("test_wape")
+    if val is None or (isinstance(val, float) and val != val):  # NaN
+        return float("inf")
+    return float(val)
+
+
+def run_forecast_escalation(
+    candidates: list[str],
+    frame: pd.DataFrame,
+    ctx: FitContext,
+    *,
+    max_candidates: int,
+    hparams: dict[str, dict[str, Any]] | None = None,
+) -> ForecastResult:
+    """Fit forecast candidates and pick the lowest hold-out WAPE. Unlike the
+    elasticity loop this keeps any model that produced a forecast (scalar
+    elasticity is optional for forecasting)."""
+    res = ForecastResult(candidates=list(candidates))
+    for key in candidates[:max_candidates]:
+        if not registry.has(key):
+            continue
+        plugin = registry.get(key)
+        if not plugin.is_available():
+            continue
+        cand_ctx = replace(ctx, hparams=(hparams or {}).get(key, {}))
+        try:
+            result = plugin.fit(frame, cand_ctx)
+        except Exception as exc:  # noqa: BLE001
+            res.errors[key] = f"{type(exc).__name__}: {exc}"
+            continue
+        if result.forecast is not None:
+            res.attempts.append(result)
+    if res.attempts:
+        res.winner = min(res.attempts, key=_forecast_wape)
     return res
