@@ -40,13 +40,15 @@ class Predictor:
 
     def predict_log(self, frame: pd.DataFrame) -> np.ndarray:
         """Predict ``log_units`` for every row in ``frame``."""
-        if self.model_kind in OLS_KINDS:
-            return _predict_log_ols(self.coefficients, frame)
         if self.model_kind == "lightgbm":
             if self.booster is None:
                 raise RuntimeError("lightgbm predictor missing booster")
             X = _design_for_lightgbm(frame, self.feature_cols)
             return np.asarray(self.booster.predict(X), dtype=float)
+        # OLS and any other linear-coefficient model (ridge/lasso/elasticnet/…)
+        # share the closed-form α + Σ βᵢ·xᵢ path.
+        if self.coefficients:
+            return _predict_log_ols(self.coefficients, frame)
         raise ValueError(f"unsupported model_kind={self.model_kind!r}")
 
     def predict_units(self, frame: pd.DataFrame) -> np.ndarray:
@@ -98,10 +100,10 @@ def build_predictor(
     winner = modeling_row.get("winner") or {}
     kind = str(modeling_row.get("winner_model") or winner.get("model") or "")
 
-    if kind in OLS_KINDS:
-        coefs = {k: float(v) for k, v in (winner.get("coefficients") or {}).items()}
+    coefs = {k: float(v) for k, v in (winner.get("coefficients") or {}).items()}
+    if kind in OLS_KINDS or (kind != "lightgbm" and "const" in coefs):
         if not coefs:
-            raise ValueError(f"{ppg_id}: OLS winner has no coefficients")
+            raise ValueError(f"{ppg_id}: linear winner has no coefficients")
         feature_cols = [c for c in coefs if c != "const"]
         return Predictor(
             ppg_id=ppg_id,

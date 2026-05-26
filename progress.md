@@ -1527,3 +1527,50 @@ awareness so there was nothing to compare past modelling.
   ``comparison_agents=["modeling"]`` to preserve its tight scope.
   Full suite: 259 passed, 3 skipped. ``tsc --noEmit`` clean,
   ``next build`` clean.
+
+## Phase 8 — Model Library + LLM-Driven Router
+
+Research catalog of ~60 price/promo models across 12 families written to
+`model_plan.md` (repo root). Design recorded in the planning doc.
+
+### Phase 8a — Contracts, registry, light families + router scaffolding ✅
+**Status:** complete (router not yet wired into the modelling agent;
+`model_library.router_enabled` defaults `False`, so the legacy
+`_fit_one_ppg` path remains the default and all existing tests stay green).
+
+**Backend**
+- `core/models/result.py` — generalised `ModelResult` (scalar elasticity /
+  cross-price matrix / `ForecastBlock`), `ProblemType` + `Capability`
+  enums, `from_elasticity_fit` / `to_elasticity_fit` adapter. The adapter
+  returns `None` when no scalar elasticity exists (pure forecasters / demand
+  systems) and lifts a cross-price diagonal into `own_elasticity`.
+- `core/models/library/` — plugin scaffolding: `base.py`
+  (`ModelPlugin` protocol + `BaseModelPlugin` with lazy `find_spec` dep
+  probing + `FitContext`), `registry.py` (decorator registry +
+  availability filter), `diagnostics.py` (`DataProfile`). Light families
+  registered: classical (`loglog_ols`, `semilog_ols` wrappers), regularized
+  (`ridge`, `lasso`, `elasticnet` via shared `_sklearn_linear` helper),
+  trees (`lightgbm` wrapper). Heavier family packages import defensively.
+- `core/models/router/` — `DeterministicRouter` (pure, config-driven,
+  dry-run fallback), `LLMRouter` (parses strict-JSON candidates, falls back
+  to rules on dry-run / parse failure / unknown key), `run_escalation`
+  (fit → evaluate → escalate; stops at first acceptable fit), and shared
+  `core/models/selection.py` (`pick_winner` / `fit_acceptable`).
+- `core/models/predictor.py` — `build_predictor` now drives any
+  linear-coefficient winner (ridge/lasso/elasticnet) through the OLS
+  closed-form path, so regularized winners feed downstream unchanged.
+- `core/config.py` — `ModelLibrarySettings`, `RouterSettings`,
+  `ModelHparams` blocks (every escalation gate + hyperparameter
+  configurable; `env_nested_delimiter="__"`). No magic numbers in code.
+
+**Tests**
+- `test_model_result.py`, `test_library_registry.py`, `test_router.py`,
+  `test_library_regularized.py`, `test_library_no_cross_import.py` (AST
+  invariant: no model module imports a sibling model), `test_escalation.py`.
+  Full unit suite: 280 passed.
+
+**Verification**
+- Library imports with light deps only; registry = {loglog_ols, semilog_ols,
+  lightgbm, ridge, lasso, elasticnet}. Ridge/Lasso/ElasticNet recover the
+  negative elasticity sign on synthetic. Router selection deterministic and
+  drops unavailable candidates while always keeping the legacy trio tail.
