@@ -44,7 +44,7 @@ from core.agents.base import Agent
 from core.models.predictor import (
     LINEAR_COEFF_MODELS,
     PREDICTABLE_MODELS,
-    TREE_MODELS,
+    REFIT_MODELS,
     build_predictor,
 )
 from core.optimization.constraints import OptimizationConstraints, PPGOptInputs
@@ -209,7 +209,7 @@ def _clip_ladder_to_envelope(
     kept verbatim (better to surface a relaxed solution than to silently
     drop the PPG).
     """
-    if inp.model_kind not in TREE_MODELS or envelope is None or inp.base_price <= 0:
+    if inp.model_kind not in REFIT_MODELS or envelope is None or inp.base_price <= 0:
         return constraints, None
     lo, hi = envelope
     kept: list[float] = []
@@ -348,7 +348,7 @@ class OptimizationAgent(Agent):
                     continue
 
             inp = _build_inputs(ppg_id, slice_, row, controls_for_opt, winner)
-            envelope = _training_price_envelope(slice_) if winner in TREE_MODELS else None
+            envelope = _training_price_envelope(slice_) if winner in REFIT_MODELS else None
             payload = await asyncio.to_thread(_optimise_one, inp, constraints, envelope)
             per_ppg.append(payload)
             envelope_clipped = bool(

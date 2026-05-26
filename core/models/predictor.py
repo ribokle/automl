@@ -41,6 +41,7 @@ LINEAR_COEFF_MODELS = frozenset(
         "ransac",
         "theil_sen",
         "quantile",
+        "bayesian_ridge",
     }
 )
 
@@ -118,7 +119,7 @@ def build_predictor(
     kind = str(modeling_row.get("winner_model") or winner.get("model") or "")
 
     coefs = {k: float(v) for k, v in (winner.get("coefficients") or {}).items()}
-    if kind not in _TREE_KINDS and "const" in coefs:
+    if kind not in _REFIT_FACTORIES and "const" in coefs:
         feature_cols = [c for c in coefs if c != "const"]
         return Predictor(
             ppg_id=ppg_id,
@@ -127,14 +128,14 @@ def build_predictor(
             coefficients=coefs,
         )
 
-    if kind in _TREE_KINDS:
+    if kind in _REFIT_FACTORIES:
         if test_ratio is None:
             train, _ = chronological_split(frame, test_ratio=0.2)
         elif test_ratio <= 0.0:
             train = frame
         else:
             train, _ = chronological_split(frame, test_ratio=test_ratio)
-        feature_cols, booster = _TREE_KINDS[kind](train, controls)
+        feature_cols, booster = _REFIT_FACTORIES[kind](train, controls)
         return Predictor(
             ppg_id=ppg_id,
             model_kind=kind,
@@ -235,20 +236,54 @@ def _fit_catboost(frame: pd.DataFrame, controls: list[str]) -> tuple[list[str], 
     return feature_cols, model
 
 
-# Tree winners are refit on the PPG's train slice so downstream stages can
-# score them; the bare estimator's ``.predict`` is wrapped by ``Predictor``.
-_TREE_KINDS: dict[str, Any] = {
+def _fit_gaussian_process(frame: pd.DataFrame, controls: list[str]) -> tuple[list[str], Any]:
+    from sklearn.gaussian_process import GaussianProcessRegressor
+    from sklearn.gaussian_process.kernels import RBF, WhiteKernel
+
+    feature_cols, X, y = _tree_design(frame, controls)
+    model = GaussianProcessRegressor(
+        kernel=RBF() + WhiteKernel(), normalize_y=True, random_state=0
+    )
+    model.fit(X, y)
+    return feature_cols, model
+
+
+def _fit_svr(frame: pd.DataFrame, controls: list[str]) -> tuple[list[str], Any]:
+    from sklearn.svm import SVR
+
+    feature_cols, X, y = _tree_design(frame, controls)
+    model = SVR(kernel="rbf", C=10.0)
+    model.fit(X, y)
+    return feature_cols, model
+
+
+def _fit_knn(frame: pd.DataFrame, controls: list[str]) -> tuple[list[str], Any]:
+    from sklearn.neighbors import KNeighborsRegressor
+
+    feature_cols, X, y = _tree_design(frame, controls)
+    model = KNeighborsRegressor(n_neighbors=min(10, max(2, len(y) // 5)))
+    model.fit(X, y)
+    return feature_cols, model
+
+
+# Non-parametric winners refit on the PPG's train slice so downstream stages
+# can score them; the bare estimator's ``.predict`` is wrapped by ``Predictor``.
+# (Includes tree ensembles + kernel/instance models — all extrapolation-bounded
+# and therefore subject to the optimiser's training-price-envelope clipping.)
+_REFIT_FACTORIES: dict[str, Any] = {
     "lightgbm": _fit_lightgbm_booster,
     "random_forest": _fit_random_forest,
     "extra_trees": _fit_extra_trees,
     "xgboost": _fit_xgboost,
     "catboost": _fit_catboost,
+    "gaussian_process": _fit_gaussian_process,
+    "svr": _fit_svr,
+    "knn": _fit_knn,
 }
 
-# Tree winners scored by refitting the estimator on the train slice.
-TREE_MODELS = frozenset(_TREE_KINDS)
+REFIT_MODELS = frozenset(_REFIT_FACTORIES)
 
 # Every winner kind a ``Predictor`` can score, so downstream stages
 # (decomposition / simulation / optimization / validation) gate against one
 # source of truth instead of hardcoded per-file lists.
-PREDICTABLE_MODELS = LINEAR_COEFF_MODELS | TREE_MODELS
+PREDICTABLE_MODELS = LINEAR_COEFF_MODELS | REFIT_MODELS

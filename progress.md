@@ -1651,11 +1651,32 @@ casing.
   pass, insights revenue computed), proving non-legacy winners feed every
   downstream stage.
 
-### Phase 8 — Remaining families (multi-entity) — DEFERRED
-Panel FE/RE, IV/2SLS, demand systems (logit/AIDS/BLP), VARX, GNN, and the deep
-sequence models are inherently multi-entity / multi-series and don't fit the
-current per-cell (`one PPG slice`) fitting loop. They need a multi-entity
-invocation path (pass a multi-PPG / multi-store frame to the plugin) — a
-separate effort from the per-cell router. Bayesian per-cell (BayesianRidge/BSTS)
-and per-cell time-series (ARIMAX/SARIMAX/ETS via statsmodels) and GAM/GP/SVR/kNN
-remain straightforward per-cell follow-ups.
+### Phase 8c-ml — Other ML / nonparametric family ✅
+**Status:** complete. Four more per-cell, downstream-compatible models.
+
+**Backend**
+- New `ml_nonparam` plugins: `bayesian_ridge` (linear-coefficient → analytic
+  downstream path), `gaussian_process`, `svr`, `knn` (refit-scored via the
+  shared bump-elasticity helper).
+- `core/models/predictor.py` — `TREE_MODELS`/`_TREE_KINDS` renamed to the honest
+  `REFIT_MODELS`/`_REFIT_FACTORIES` (now also covers GP/SVR/kNN); added their
+  refit factories; `bayesian_ridge` added to `LINEAR_COEFF_MODELS`. All eight
+  refit models are envelope-clipped by the optimiser like the trees.
+- Registry now holds 18 models (12 available with base deps; xgboost/catboost
+  optional).
+
+**Tests**
+- `test_library_ml_nonparam.py`. Full unit suite: 300 passed, 2 skipped.
+
+### Phase 8 — Remaining families — DEFERRED (need a non-per-cell path)
+These don't fit the per-cell, optimisation-feeding loop and are a separate
+design effort:
+- **Forecast-oriented** (ARIMAX/SARIMAX/ETS/Holt-Winters/state-space/Prophet/
+  TBATS, DeepAR/LSTM/TFT/N-BEATS): produce a `ForecastBlock`, not a price-sweep
+  model the optimiser can ladder. Belong to the `FORECAST` problem path.
+- **Multi-entity** (panel FE/RE, IV/2SLS, Double-ML, demand systems
+  logit/AIDS/BLP, VARX, GNN, hierarchical Bayes via pymc): need a multi-PPG /
+  multi-store frame passed to the plugin, not a single PPG slice.
+- **GAM** (pygam): per-cell but optional dep; straightforward follow-up.
+The registry + `ModelResult`(forecast/cross-price) + capability flags already
+accommodate these; wiring is the remaining work.

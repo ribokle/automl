@@ -16,6 +16,7 @@ from core.models.library import registry
 # registering them never triggers a heavy import.
 from core.models.library import (  # noqa: F401,E402
     classical,
+    ml_nonparam,
     regularized,
     robust_quantile,
     trees,
@@ -28,7 +29,6 @@ for _family in (
     "causal",
     "discrete_choice",
     "bayesian",
-    "ml_nonparam",
     "timeseries",
     "deep",
     "promo",

@@ -42,7 +42,7 @@ from core.models.library.base import FitContext
 from core.models.predictor import (
     LINEAR_COEFF_MODELS,
     PREDICTABLE_MODELS,
-    TREE_MODELS,
+    REFIT_MODELS,
     build_predictor,
 )
 from core.orchestrator.state import AgentResult, ArtifactRef, RunState
@@ -112,7 +112,7 @@ def _decompose_one_ppg(
         summary["attribution_method"] = "closed_form"
         return weekly, summary
 
-    if model_kind in TREE_MODELS:
+    if model_kind in REFIT_MODELS:
         # Refit the tree on the FULL frame (no holdout) so every observed
         # week is attributed.
         predictor = build_predictor(modeling_row, frame, controls, test_ratio=0.0)
