@@ -39,6 +39,14 @@ def test_recovers_negative_sign_and_predicts(key: str) -> None:
     assert np.isfinite(preds).all()
 
 
+def test_gam_skips_cleanly_when_absent() -> None:
+    plugin = registry.get("gam")
+    if not plugin.is_available():
+        pytest.skip("pygam not installed")
+    result = plugin.fit(_demand_frame(), FitContext(ppg_id="P1", controls=["ctrl"]))
+    assert result.own_elasticity is not None
+
+
 def test_bayesian_ridge_is_linear_coeff() -> None:
     result = registry.get("bayesian_ridge").fit(
         _demand_frame(), FitContext(ppg_id="P1", controls=["ctrl"])

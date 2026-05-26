@@ -266,6 +266,14 @@ def _fit_knn(frame: pd.DataFrame, controls: list[str]) -> tuple[list[str], Any]:
     return feature_cols, model
 
 
+def _fit_gam(frame: pd.DataFrame, controls: list[str]) -> tuple[list[str], Any]:
+    from pygam import LinearGAM
+
+    feature_cols, X, y = _tree_design(frame, controls)
+    model = LinearGAM().fit(X, y)
+    return feature_cols, model
+
+
 # Non-parametric winners refit on the PPG's train slice so downstream stages
 # can score them; the bare estimator's ``.predict`` is wrapped by ``Predictor``.
 # (Includes tree ensembles + kernel/instance models — all extrapolation-bounded
@@ -279,6 +287,7 @@ _REFIT_FACTORIES: dict[str, Any] = {
     "gaussian_process": _fit_gaussian_process,
     "svr": _fit_svr,
     "knn": _fit_knn,
+    "gam": _fit_gam,
 }
 
 REFIT_MODELS = frozenset(_REFIT_FACTORIES)
