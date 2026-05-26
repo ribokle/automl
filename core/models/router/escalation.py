@@ -9,7 +9,7 @@ so the relaxation semantics match the legacy agent exactly.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 import pandas as pd
@@ -48,6 +48,7 @@ def run_escalation(
     max_candidates: int,
     magnitude_ceiling: float,
     wape_floor: float,
+    hparams: dict[str, dict[str, Any]] | None = None,
 ) -> EscalationResult:
     res = EscalationResult(candidates=list(candidates))
     for key in candidates[:max_candidates]:
@@ -56,8 +57,9 @@ def run_escalation(
         plugin = registry.get(key)
         if not plugin.is_available():
             continue
+        cand_ctx = replace(ctx, hparams=(hparams or {}).get(key, {}))
         try:
-            model_result = plugin.fit(frame, ctx)
+            model_result = plugin.fit(frame, cand_ctx)
         except Exception as exc:  # noqa: BLE001 — record + continue to next candidate
             res.errors[key] = f"{type(exc).__name__}: {exc}"
             continue

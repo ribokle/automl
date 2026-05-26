@@ -19,12 +19,13 @@ from core.orchestrator.gates import RERUNNABLE_AGENTS, gate_registry
 from core.orchestrator.state import AGENT_ORDER, AgentResult, AgentStatus, RunState
 
 
-def test_rerunnable_whitelist_includes_optimization() -> None:
+def test_rerunnable_whitelist_includes_optimization_and_modeling() -> None:
     assert "optimization" in RERUNNABLE_AGENTS
+    assert "modeling" in RERUNNABLE_AGENTS
 
 
 def test_request_rerun_rejects_non_whitelisted_agent() -> None:
-    ok = gate_registry.request_rerun("R1", "modeling", {"foo": 1})
+    ok = gate_registry.request_rerun("R1", "decomposition", {"foo": 1})
     assert ok is False
 
 
@@ -61,7 +62,7 @@ def test_rerun_endpoint_returns_400_for_non_whitelisted_agent(tmp_path: Path, mo
     from api.main import app
 
     client = TestClient(app)
-    res = client.post("/runs/abc/rerun?agent=modeling", json={})
+    res = client.post("/runs/abc/rerun?agent=decomposition", json={})
     assert res.status_code == 400
 
 

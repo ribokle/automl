@@ -33,7 +33,12 @@ DEFAULT_GATES: dict[str, bool] = {
 # Agents whose `/rerun` endpoint is allowed to mutate `run.options` and trigger
 # a re-execution of the agent. Keep this whitelist tight — most agents are not
 # safe to re-run in isolation (their outputs feed every downstream stage).
-RERUNNABLE_AGENTS: frozenset[str] = frozenset({"optimization"})
+#
+# ``modeling`` is safe because its gate pauses BEFORE every downstream stage:
+# rerunning re-fits with new model-selection options, and on approval the DAG
+# continues so decomposition / optimisation / validation all run against the
+# fresh elasticities (no stale downstream artifacts).
+RERUNNABLE_AGENTS: frozenset[str] = frozenset({"modeling", "optimization"})
 
 
 @dataclass

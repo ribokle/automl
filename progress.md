@@ -1574,3 +1574,41 @@ Research catalog of ~60 price/promo models across 12 families written to
   lightgbm, ridge, lasso, elasticnet}. Ridge/Lasso/ElasticNet recover the
   negative elasticity sign on synthetic. Router selection deterministic and
   drops unavailable candidates while always keeping the legacy trio tail.
+
+### Phase 8c — Router wired into the modelling agent ✅
+**Status:** complete. The router is now invoked by the pipeline behind
+`model_library.router_enabled` (default `False`, so the legacy three-candidate
+path stays the default and all prior behaviour is unchanged).
+
+**Backend**
+- `core/agents/modeling.py` — when `router_enabled`, each cell computes a
+  `DataProfile`, the router picks an ordered candidate set (deterministic rules
+  in dry-run / `mode="rules"`, else LLM with rules fallback), and
+  `run_escalation` fits in order and stops at the first acceptable fit.
+  `_fit_one_ppg_routed` shapes the row identically to the legacy path so every
+  downstream consumer is unaffected. Per-run overrides
+  (`run.options["modeling"]`) merge over global config via `_resolve_config`,
+  so a rerun can re-model with a different enabled set / router mode / problem
+  type. Pre-fit gate thresholds now read from config.
+- New artifact `router_decision.json` (per-cell router, candidate list, data
+  profile). `modeling_results.json` gains `router_enabled` + a router-aware
+  `model_pool`.
+- `core/models/router/escalation.py` — `run_escalation` accepts per-candidate
+  `hparams` (each plugin's config block) via `dataclasses.replace`.
+- `core/orchestrator/gates.py` — `modeling` added to `RERUNNABLE_AGENTS`. Safe
+  because the modelling gate pauses before every downstream stage, so on
+  approval the DAG re-runs decomposition→insights against the fresh
+  elasticities.
+
+**Tests**
+- `tests/unit/test_modeling_router.py` (routed run writes `router_decision.json`
+  + recovers sign; legacy path writes none; `_resolve_config` applies per-run
+  overrides without mutating global settings). `test_gate_rerun.py` updated
+  (modeling now whitelisted; non-rerunnable example switched to
+  `decomposition`). Full unit suite: 283 passed.
+
+**Verification**
+- `MODEL_LIBRARY__ROUTER_ENABLED=true automl run --no-gates` on the synthetic
+  panel: 8/8 correct elasticity signs, decomposition reconciles to 0.000%, and
+  optimisation/validation/insights complete. Routed winners (7 loglog_ols, 1
+  lightgbm) feed the predictor unchanged.

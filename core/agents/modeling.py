@@ -28,14 +28,23 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+import core.models.library  # noqa: F401 — register model plugins
 from core.agents.base import Agent
+from core.config import get_settings
 from core.features.engineering import ENGINEERED_COLUMNS, TARGET
 from core.models.base import ElasticityFit
 from core.models.bayes_hier import shrink, to_payload
+from core.models.library import registry as model_registry
+from core.models.library.base import FitContext
+from core.models.library.diagnostics import profile as data_profile
 from core.models.lightgbm_model import fit_lightgbm
 from core.models.loglog_ols import fit_loglog
 from core.models.metrics import chronological_split
 from core.models.predictor import build_predictor
+from core.models.router.escalation import run_escalation
+from core.models.router.llm_router import LLMRouter
+from core.models.router.rules import DeterministicRouter
+from core.models.result import ProblemType
 from core.models.semilog_ols import fit_semilog
 from core.orchestrator.state import AgentResult, ArtifactRef, RunState
 
@@ -81,6 +90,28 @@ def _load_controls(run_dir: Path) -> list[str]:
     return [c for c in ENGINEERED_COLUMNS if c not in (TARGET, "log_price")]
 
 
+def _resolve_config(run: RunState, settings):
+    """Merge per-run ``run.options['modeling']`` overrides over the global
+    model-library / router config, validating the result. Lets the rerun loop
+    re-model with a different enabled set, router mode, or problem type."""
+    opts: dict = {}
+    if isinstance(run.options, dict):
+        raw = run.options.get("modeling")
+        if isinstance(raw, dict):
+            opts = raw
+    lib_fields = type(settings.model_library).model_fields
+    rtr_fields = type(settings.router).model_fields
+    lib_updates = {k: v for k, v in opts.items() if k in lib_fields}
+    rtr_updates = {k: v for k, v in opts.items() if k in rtr_fields}
+    lib = settings.model_library
+    rtr = settings.router
+    if lib_updates:
+        lib = type(lib).model_validate({**lib.model_dump(), **lib_updates})
+    if rtr_updates:
+        rtr = type(rtr).model_validate({**rtr.model_dump(), **rtr_updates})
+    return lib, rtr
+
+
 # In log-price space the standard deviation IS the relative price
 # variation (a std of 0.05 ≈ ±5% swings). PPGs whose log-price barely
 # moves can't identify an elasticity, so we skip them with a clear
@@ -95,12 +126,16 @@ def _log_price_std(slice_: pd.DataFrame) -> float:
     return float(slice_["log_price"].std(ddof=0))
 
 
-def _gate_slice(slice_: pd.DataFrame) -> str | None:
+def _gate_slice(
+    slice_: pd.DataFrame,
+    min_rows: int = MIN_ROWS_FOR_FIT,
+    std_floor: float = LOG_PRICE_STD_FLOOR,
+) -> str | None:
     """Return a skip-reason string if the slice fails any pre-fit gate, else None."""
-    if len(slice_) < MIN_ROWS_FOR_FIT:
+    if len(slice_) < min_rows:
         return f"insufficient rows ({len(slice_)})"
     std = _log_price_std(slice_)
-    if std < LOG_PRICE_STD_FLOOR:
+    if std < std_floor:
         return f"price_variance_below_floor (std_log_price={std:.4f})"
     return None
 
@@ -160,11 +195,84 @@ def _fit_one_ppg(ppg_id: str, frame: pd.DataFrame, controls: list[str]) -> dict:
     }
 
 
+def _effective_enabled(lib) -> set[str]:
+    """Available registry keys narrowed by the config allow/deny lists."""
+    avail = model_registry.available_keys()
+    enabled = set(lib.enabled_models)
+    out = (avail & enabled) if enabled else set(avail)
+    return out - set(lib.disabled_models)
+
+
+def _fit_one_ppg_routed(
+    ppg_id: str,
+    frame: pd.DataFrame,
+    controls: list[str],
+    candidates: list[str],
+    *,
+    grain: str,
+    problem: ProblemType,
+    hparams: dict[str, dict],
+    max_candidates: int,
+    magnitude_ceiling: float,
+    wape_floor: float,
+    rng_seed: int,
+) -> dict:
+    """Run the router-chosen candidate list through the escalation loop and
+    shape the result like ``_fit_one_ppg`` so every downstream consumer is
+    unaffected by which path produced the row."""
+    train, test = chronological_split(frame, test_ratio=0.2)
+    ctx = FitContext(
+        ppg_id=ppg_id,
+        controls=controls,
+        test=test,
+        grain=grain,
+        problem_type=problem,
+        rng_seed=rng_seed,
+    )
+    esc = run_escalation(
+        candidates,
+        train,
+        ctx,
+        max_candidates=max_candidates,
+        magnitude_ceiling=magnitude_ceiling,
+        wape_floor=wape_floor,
+        hparams=hparams,
+    )
+    row: dict = {
+        "ppg_id": ppg_id,
+        "winner_model": esc.winner.model if esc.winner else "no_fit",
+        "sign_retry_fired": False,
+        "attempts": [a.to_dict() for a in esc.attempts],
+        "winner": esc.winner.to_dict() if esc.winner else None,
+        "n_train": int(len(train)),
+        "n_test": int(len(test)),
+        "router": {
+            "problem_type": problem.value,
+            "candidates": esc.candidates,
+            "non_scalar": esc.non_scalar,
+            "errors": esc.errors,
+        },
+    }
+    if esc.winner is None:
+        row["skip_reason"] = "router_no_scalar_fit"
+    return row
+
+
 class ModelingAgent(Agent):
     name = "modeling"
 
     async def _execute(self, run: RunState, result: AgentResult) -> None:
         run_dir = Path(run.run_dir)
+
+        settings = get_settings()
+        lib, rtr = _resolve_config(run, settings)
+        hparams = settings.model_hparams.model_dump()
+        routed = lib.router_enabled
+        grain_str = settings.modelling_grain.value
+        dry_run = self.llm.provider.value == "dry_run"
+        problem = ProblemType(rtr.default_problem_type)
+        eff_enabled = _effective_enabled(lib) if routed else set()
+        router_decisions: list[dict] = []
 
         feats = await asyncio.to_thread(_load_features, run_dir)
         eligible = _load_eligible_ppgs(run_dir)
@@ -232,7 +340,7 @@ class ModelingAgent(Agent):
 
             for unit_id, slice_ in cells:
                 cell_id = ppg_id if unit_id is None else f"{ppg_id}@{unit_id}"
-                reason = _gate_slice(slice_)
+                reason = _gate_slice(slice_, lib.min_rows_for_fit, lib.log_price_std_floor)
                 preflight.append(
                     {
                         "ppg_id": ppg_id,
@@ -271,7 +379,44 @@ class ModelingAgent(Agent):
                         },
                     )
                     continue
-                row = await asyncio.to_thread(_fit_one_ppg, ppg_id, slice_, controls)
+                if routed:
+                    prof = data_profile(
+                        slice_,
+                        controls,
+                        grain=grain_str,
+                        test_ratio=0.2,
+                        seasonality_min_length=rtr.seasonality_min_length,
+                    )
+                    candidates, router_used = self._route(
+                        result, problem, prof, eff_enabled, dry_run, rtr
+                    )
+                    router_decisions.append(
+                        {
+                            "cell_id": cell_id,
+                            "ppg_id": ppg_id,
+                            "grain_unit": unit_id,
+                            "router": router_used,
+                            "problem_type": problem.value,
+                            "candidates": candidates,
+                            "profile": prof.to_dict(),
+                        }
+                    )
+                    row = await asyncio.to_thread(
+                        _fit_one_ppg_routed,
+                        ppg_id,
+                        slice_,
+                        controls,
+                        candidates,
+                        grain=grain_str,
+                        problem=problem,
+                        hparams=hparams,
+                        max_candidates=lib.max_candidates,
+                        magnitude_ceiling=lib.winner_magnitude_ceiling,
+                        wape_floor=lib.wape_escalate_floor,
+                        rng_seed=lib.rng_seed,
+                    )
+                else:
+                    row = await asyncio.to_thread(_fit_one_ppg, ppg_id, slice_, controls)
                 row["grain_unit"] = unit_id
                 per_ppg.append(row)
                 await self.emit(
@@ -345,8 +490,8 @@ class ModelingAgent(Agent):
                     "n_skipped": sum(1 for p in preflight if p["skip_reason"]),
                     "skip_reasons": skip_reason_counts,
                     "thresholds": {
-                        "min_rows_for_fit": MIN_ROWS_FOR_FIT,
-                        "log_price_std_floor": LOG_PRICE_STD_FLOOR,
+                        "min_rows_for_fit": lib.min_rows_for_fit,
+                        "log_price_std_floor": lib.log_price_std_floor,
                     },
                     "per_ppg": preflight,
                 },
@@ -363,6 +508,29 @@ class ModelingAgent(Agent):
             )
         )
 
+        if routed:
+            router_path = run_dir / "router_decision.json"
+            router_path.write_text(
+                json.dumps(
+                    {
+                        "router_mode": rtr.mode,
+                        "problem_type": problem.value,
+                        "enabled_models": sorted(eff_enabled),
+                        "decisions": router_decisions,
+                    },
+                    indent=2,
+                    default=str,
+                )
+            )
+            result.artifacts.append(
+                ArtifactRef(
+                    path=str(router_path),
+                    mime="application/json",
+                    agent=self.name,
+                    name=router_path.name,
+                )
+            )
+
         results_blob = {
             "controls_used": controls,
             "per_ppg": per_ppg,
@@ -372,7 +540,10 @@ class ModelingAgent(Agent):
             "n_robust_refit": n_robust_refit,
             "skip_reasons": skip_reason_counts,
             "n_total": len(per_ppg),
-            "model_pool": ["loglog_ols", "semilog_ols", "lightgbm"],
+            "router_enabled": routed,
+            "model_pool": (
+                sorted(eff_enabled) if routed else ["loglog_ols", "semilog_ols", "lightgbm"]
+            ),
         }
         results_path = run_dir / "modeling_results.json"
         results_path.write_text(json.dumps(results_blob, indent=2))
@@ -483,6 +654,29 @@ class ModelingAgent(Agent):
         except (json.JSONDecodeError, ValueError) as exc:
             self.log.warning("modeling: LLM narrative parse failed: %s", exc)
             return "", []
+
+    def _route(
+        self, result, problem, prof, enabled, dry_run, rtr
+    ) -> tuple[list[str], str]:
+        """Pick an ordered candidate set. Deterministic rules in dry-run or
+        ``mode='rules'``; otherwise the LLM router with rules fallback."""
+        rules = DeterministicRouter(rtr)
+        if rtr.mode == "rules" or dry_run:
+            return rules.select(problem, prof, enabled=enabled), "rules"
+        system, user = LLMRouter.build_prompt(problem, prof, sorted(enabled))
+        try:
+            resp = self.call_llm(
+                result, system=system, user=user, max_tokens=400, label="model-router"
+            )
+        except (ValueError, RuntimeError) as exc:
+            self.log.warning("modeling: router LLM call failed: %s", exc)
+            return rules.select(problem, prof, enabled=enabled), "rules"
+        if self._is_dry_run(resp):
+            return rules.select(problem, prof, enabled=enabled), "rules"
+        cands = LLMRouter(rules, rtr).select(
+            problem, prof, enabled=enabled, llm_text=resp.text
+        )
+        return cands, "llm"
 
 
 def _winners_by_family(per_ppg: list[dict]) -> dict[str, int]:
