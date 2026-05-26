@@ -15,6 +15,7 @@ from core.models.library import registry
 # third-party deps inside these modules are imported lazily in ``fit``, so
 # registering them never triggers a heavy import.
 from core.models.library import (  # noqa: F401,E402
+    causal,
     classical,
     ml_nonparam,
     regularized,
@@ -27,7 +28,6 @@ from core.models.library import (  # noqa: F401,E402
 # break importing the library as a whole.
 for _family in (
     "panel",
-    "causal",
     "discrete_choice",
     "bayesian",
     "deep",

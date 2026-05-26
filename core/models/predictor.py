@@ -42,6 +42,7 @@ LINEAR_COEFF_MODELS = frozenset(
         "theil_sen",
         "quantile",
         "bayesian_ridge",
+        "double_ml",
     }
 )
 

@@ -1699,8 +1699,24 @@ dedicated FORECAST path, distinct from the price-optimisation flow.
   panel: ARIMAX wins both PPGs, horizon-26 forecasts written, elasticities
   recovered (-1.49 vs truth -1.5, -2.03 vs -2.0).
 
+### Phase 8e — Double Machine Learning (causal) ✅
+**Status:** complete. Endogeneity-corrected per-cell elasticity, no new dep.
+
+**Backend**
+- New `causal` plugin `double_ml`: partially-linear DML — RandomForest nuisance
+  models residualise log_units and log_price on the controls via cross-fitting,
+  θ (own-price elasticity) is the residual OLS slope, and control coefficients
+  are recovered on the θ-adjusted target so the winner is a full predictor-
+  compatible log-space coefficient vector. Added to `LINEAR_COEFF_MODELS`;
+  appears in the router's default large-N preference.
+
+**Tests**
+- `test_library_causal.py` (recovers a negative, confounding-corrected
+  elasticity under price-control confounding; predictor-compatible). Full unit
+  suite: 313 passed, 5 skipped.
+
 ### Phase 8 — Still deferred (need a multi-entity path)
-- **Multi-entity** (panel FE/RE, IV/2SLS, Double-ML, demand systems
+- **Multi-entity** (panel FE/RE, IV/2SLS, demand systems
   logit/AIDS/BLP, VARX, GNN, hierarchical Bayes via pymc): need a multi-PPG /
   multi-store frame passed to the plugin, not a single PPG slice.
 - **Deep sequence models** (DeepAR/LSTM/GRU/TFT/N-BEATS): forecast-path models
