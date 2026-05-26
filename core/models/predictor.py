@@ -27,6 +27,23 @@ from core.models.metrics import chronological_split
 
 OLS_KINDS = {"loglog_ols", "semilog_ols"}
 
+# Models whose downstream contribution is computed analytically from a
+# log-space coefficient vector (α + Σ βᵢ·xᵢ). Every fitter here emits a
+# ``coefficients`` dict with a ``const`` intercept.
+LINEAR_COEFF_MODELS = frozenset(
+    {
+        "loglog_ols",
+        "semilog_ols",
+        "ridge",
+        "lasso",
+        "elasticnet",
+        "huber",
+        "ransac",
+        "theil_sen",
+        "quantile",
+    }
+)
+
 
 @dataclass
 class Predictor:
@@ -36,13 +53,13 @@ class Predictor:
     model_kind: str
     feature_cols: list[str]
     coefficients: dict[str, float] = field(default_factory=dict)
-    booster: Any = None  # LGBMRegressor when model_kind == "lightgbm"
+    booster: Any = None  # fitted tree estimator when the winner is tree-based
 
     def predict_log(self, frame: pd.DataFrame) -> np.ndarray:
         """Predict ``log_units`` for every row in ``frame``."""
-        if self.model_kind == "lightgbm":
-            if self.booster is None:
-                raise RuntimeError("lightgbm predictor missing booster")
+        # Any tree estimator (lightgbm/random_forest/xgboost/…) is wrapped as a
+        # booster and scored directly.
+        if self.booster is not None:
             X = _design_for_lightgbm(frame, self.feature_cols)
             return np.asarray(self.booster.predict(X), dtype=float)
         # OLS and any other linear-coefficient model (ridge/lasso/elasticnet/…)
@@ -101,9 +118,7 @@ def build_predictor(
     kind = str(modeling_row.get("winner_model") or winner.get("model") or "")
 
     coefs = {k: float(v) for k, v in (winner.get("coefficients") or {}).items()}
-    if kind in OLS_KINDS or (kind != "lightgbm" and "const" in coefs):
-        if not coefs:
-            raise ValueError(f"{ppg_id}: linear winner has no coefficients")
+    if kind not in _TREE_KINDS and "const" in coefs:
         feature_cols = [c for c in coefs if c != "const"]
         return Predictor(
             ppg_id=ppg_id,
@@ -112,14 +127,14 @@ def build_predictor(
             coefficients=coefs,
         )
 
-    if kind == "lightgbm":
+    if kind in _TREE_KINDS:
         if test_ratio is None:
             train, _ = chronological_split(frame, test_ratio=0.2)
         elif test_ratio <= 0.0:
             train = frame
         else:
             train, _ = chronological_split(frame, test_ratio=test_ratio)
-        feature_cols, booster = _fit_lightgbm_booster(train, controls)
+        feature_cols, booster = _TREE_KINDS[kind](train, controls)
         return Predictor(
             ppg_id=ppg_id,
             model_kind=kind,
@@ -162,3 +177,78 @@ def _fit_lightgbm_booster(
     )
     model.fit(X, y)
     return feature_cols, model
+
+
+def _tree_design(frame: pd.DataFrame, controls: list[str]) -> tuple[list[str], pd.DataFrame, np.ndarray]:
+    usable = [c for c in controls if c in frame.columns and c not in ("log_price", "log_units")]
+    usable = [c for c in usable if frame[c].nunique(dropna=True) > 1]
+    feature_cols = ["log_price"] + usable
+    sub = frame[["log_units", *feature_cols]].dropna()
+    X = sub[feature_cols].astype(float).copy()
+    y = sub["log_units"].astype(float).to_numpy()
+    return feature_cols, X, y
+
+
+def _fit_random_forest(frame: pd.DataFrame, controls: list[str]) -> tuple[list[str], Any]:
+    from sklearn.ensemble import RandomForestRegressor
+
+    feature_cols, X, y = _tree_design(frame, controls)
+    model = RandomForestRegressor(
+        n_estimators=300, min_samples_leaf=3, random_state=0, n_jobs=1
+    )
+    model.fit(X, y)
+    return feature_cols, model
+
+
+def _fit_extra_trees(frame: pd.DataFrame, controls: list[str]) -> tuple[list[str], Any]:
+    from sklearn.ensemble import ExtraTreesRegressor
+
+    feature_cols, X, y = _tree_design(frame, controls)
+    model = ExtraTreesRegressor(
+        n_estimators=300, min_samples_leaf=3, random_state=0, n_jobs=1
+    )
+    model.fit(X, y)
+    return feature_cols, model
+
+
+def _fit_xgboost(frame: pd.DataFrame, controls: list[str]) -> tuple[list[str], Any]:
+    from xgboost import XGBRegressor
+
+    feature_cols, X, y = _tree_design(frame, controls)
+    model = XGBRegressor(
+        n_estimators=300, learning_rate=0.05, max_depth=3, subsample=0.9,
+        random_state=0, verbosity=0,
+    )
+    model.fit(X, y)
+    return feature_cols, model
+
+
+def _fit_catboost(frame: pd.DataFrame, controls: list[str]) -> tuple[list[str], Any]:
+    from catboost import CatBoostRegressor
+
+    feature_cols, X, y = _tree_design(frame, controls)
+    model = CatBoostRegressor(
+        iterations=300, learning_rate=0.05, depth=4, random_seed=0,
+        verbose=False, allow_writing_files=False,
+    )
+    model.fit(X, y)
+    return feature_cols, model
+
+
+# Tree winners are refit on the PPG's train slice so downstream stages can
+# score them; the bare estimator's ``.predict`` is wrapped by ``Predictor``.
+_TREE_KINDS: dict[str, Any] = {
+    "lightgbm": _fit_lightgbm_booster,
+    "random_forest": _fit_random_forest,
+    "extra_trees": _fit_extra_trees,
+    "xgboost": _fit_xgboost,
+    "catboost": _fit_catboost,
+}
+
+# Tree winners scored by refitting the estimator on the train slice.
+TREE_MODELS = frozenset(_TREE_KINDS)
+
+# Every winner kind a ``Predictor`` can score, so downstream stages
+# (decomposition / simulation / optimization / validation) gate against one
+# source of truth instead of hardcoded per-file lists.
+PREDICTABLE_MODELS = LINEAR_COEFF_MODELS | TREE_MODELS

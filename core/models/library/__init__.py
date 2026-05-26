@@ -11,8 +11,15 @@ from __future__ import annotations
 
 from core.models.library import registry
 
-# Light families — always importable (deps are in the base install).
-from core.models.library import classical, regularized, trees  # noqa: F401,E402
+# Light families — always importable (deps are in the base install). Optional
+# third-party deps inside these modules are imported lazily in ``fit``, so
+# registering them never triggers a heavy import.
+from core.models.library import (  # noqa: F401,E402
+    classical,
+    regularized,
+    robust_quantile,
+    trees,
+)
 
 # Heavier families register defensively; absence of an optional dep must not
 # break importing the library as a whole.
@@ -25,7 +32,6 @@ for _family in (
     "timeseries",
     "deep",
     "promo",
-    "robust_quantile",
 ):
     try:  # noqa: SIM105
         __import__(f"core.models.library.{_family}")

@@ -38,7 +38,7 @@ def test_small_n_prefers_ridge_over_loglog() -> None:
     assert out[0] == "ridge"
     assert "loglog_ols" in out
     assert out.index("ridge") < out.index("loglog_ols")
-    assert "huber" not in out  # not registered yet -> dropped
+    assert "huber" in out  # robust fitter is registered and available
 
 
 def test_large_n_prefers_loglog_first() -> None:

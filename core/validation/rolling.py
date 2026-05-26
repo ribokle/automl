@@ -26,9 +26,10 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
-from core.models.lightgbm_model import fit_lightgbm
-from core.models.loglog_ols import fit_loglog
-from core.models.semilog_ols import fit_semilog
+import core.models.library  # noqa: F401 — register model plugins
+from core.models.library import registry as model_registry
+from core.models.library.base import FitContext
+from core.models.result import to_elasticity_fit
 
 
 @dataclass
@@ -88,15 +89,20 @@ def fit_one_fold(
     controls: list[str],
     model_kind: str,
 ) -> dict:
-    """Refit the winning model family on one fold, return elasticity + WAPE."""
-    if model_kind == "loglog_ols":
-        fit = fit_loglog(ppg_id, fold.train, controls, test=fold.test)
-    elif model_kind == "semilog_ols":
-        fit = fit_semilog(ppg_id, fold.train, controls, test=fold.test)
-    elif model_kind == "lightgbm":
-        fit = fit_lightgbm(ppg_id, fold.train, controls, test=fold.test)
-    else:
+    """Refit the winning model family on one fold, return elasticity + WAPE.
+
+    Routes through the model-library registry so any registered, available
+    plugin can be cross-validated, not just the original three families.
+    """
+    if not model_registry.has(model_kind):
         raise ValueError(f"unsupported model_kind={model_kind!r}")
+    plugin = model_registry.get(model_kind)
+    if not plugin.is_available():
+        raise ValueError(f"model_kind={model_kind!r} dependency unavailable")
+    ctx = FitContext(ppg_id=ppg_id, controls=controls, test=fold.test)
+    fit = to_elasticity_fit(plugin.fit(fold.train, ctx))
+    if fit is None:
+        raise ValueError(f"model_kind={model_kind!r} produced no scalar elasticity")
     return {
         "fold": fold.index,
         "n_train": int(len(fold.train)),

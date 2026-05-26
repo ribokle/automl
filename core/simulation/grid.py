@@ -69,13 +69,14 @@ def simulate_ols_grid(
     if base_price <= 0:
         raise ValueError("base_price must be positive")
 
+    # semilog is the only raw-price model; every other linear-coefficient
+    # model is log-price space.
+    is_semilog = model_kind == "semilog_ols"
     swept_cols: set[str] = set()
-    if model_kind == "loglog_ols":
-        swept_cols.update({"log_price", "log_price_gap", "log_base_price"})
-    elif model_kind == "semilog_ols":
+    if is_semilog:
         swept_cols.update({"price"})
     else:
-        raise ValueError(f"unsupported model_kind={model_kind!r}")
+        swept_cols.update({"log_price", "log_price_gap", "log_base_price"})
     swept_cols.update(spec.promo_features)
 
     fixed_log = _context_log_units(coefficients, spec.context, swept_cols)
@@ -88,7 +89,9 @@ def simulate_ols_grid(
         price = base_price * mult
         log_units = fixed_log
 
-        if model_kind == "loglog_ols":
+        if is_semilog:
+            log_units += float(coefficients.get("price", 0.0)) * price
+        else:
             log_price = float(np.log(price))
             log_units += float(coefficients.get("log_price", 0.0)) * log_price
             if "log_price_gap" in coefficients:
@@ -96,8 +99,6 @@ def simulate_ols_grid(
                 log_units += float(coefficients["log_price_gap"]) * (log_price - comp_ref)
             if "log_base_price" in coefficients:
                 log_units += float(coefficients["log_base_price"]) * log_base_price
-        else:  # semilog_ols
-            log_units += float(coefficients.get("price", 0.0)) * price
 
         for col in spec.promo_features:
             if col in coefficients:

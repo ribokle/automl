@@ -34,6 +34,8 @@ def fit_sklearn_loglog(
     model_name: str,
     estimator_factory: Callable[[], Any],
     test: pd.DataFrame | None = None,
+    coef_fn: Callable[[Any], Any] | None = None,
+    intercept_fn: Callable[[Any], Any] | None = None,
 ) -> ModelResult:
     if LOG_PRICE not in frame.columns or TARGET not in frame.columns:
         raise ValueError(f"frame missing {LOG_PRICE} or {TARGET}")
@@ -48,15 +50,18 @@ def fit_sklearn_loglog(
     estimator = estimator_factory()
     estimator.fit(X, y)
 
-    own_beta = float(estimator.coef_[0])
-    coefs: dict[str, float] = {"const": float(estimator.intercept_)}
-    coefs.update({c: float(b) for c, b in zip(cols, estimator.coef_)})
+    coef = np.asarray(coef_fn(estimator) if coef_fn else estimator.coef_, dtype=float).ravel()
+    intercept = float(intercept_fn(estimator) if intercept_fn else estimator.intercept_)
+
+    own_beta = float(coef[0])
+    coefs: dict[str, float] = {"const": intercept}
+    coefs.update({c: float(b) for c, b in zip(cols, coef)})
 
     train_pred = estimator.predict(X)
     diagnostics: dict[str, Any] = {
         "train_wape": wape_units(y, train_pred),
         "alpha": float(getattr(estimator, "alpha_", getattr(estimator, "alpha", float("nan")))),
-        "n_nonzero_coef": int(np.count_nonzero(estimator.coef_)),
+        "n_nonzero_coef": int(np.count_nonzero(coef)),
     }
     r_squared = float(estimator.score(X, y))
 

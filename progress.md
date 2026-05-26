@@ -1612,3 +1612,50 @@ path stays the default and all prior behaviour is unchanged).
   panel: 8/8 correct elasticity signs, decomposition reconciles to 0.000%, and
   optimisation/validation/insights complete. Routed winners (7 loglog_ols, 1
   lightgbm) feed the predictor unchanged.
+
+### Phase 8b — Robust/quantile + tree families, downstream-compatible ✅
+**Status:** complete. Eight more models registered; all flow through the full
+DAG (decomposition / simulation / optimisation / validation) without special
+casing.
+
+**Backend**
+- New plugins: robust/quantile (`huber`, `ransac`, `theil_sen`, `quantile` —
+  log-log linear via shared `_sklearn_linear`) and trees (`random_forest`,
+  `extra_trees` on scikit-learn; `xgboost`, `catboost` as optional extras via
+  shared `_tree_common` bump-elasticity). All escalation/router-aware.
+- `core/models/predictor.py` — canonical capability sets `LINEAR_COEFF_MODELS`
+  (analytic α+Σβx path) and `TREE_MODELS` (refit-and-score), unioned as
+  `PREDICTABLE_MODELS`. `Predictor` scores any tree estimator via its booster;
+  `build_predictor` refits RF/ExtraTrees/XGB/CatBoost. Downstream agents
+  (`decomposition`, `simulation`, `optimization`, `validation`) now gate on
+  these shared sets instead of hardcoded `{loglog, semilog, lightgbm}`.
+- The price-sweep math (`core/optimization/predict.py`,
+  `core/simulation/grid.py`) and the downstream base-price / envelope-clip
+  branches were generalised to the rule "**only `semilog_ols` is raw-price;
+  every other model is log-price space**", so the new linear + tree winners
+  simulate / optimise correctly.
+- `core/validation/rolling.py:fit_one_fold` now refits via the registry, so
+  any registered model can be rolling-CV'd.
+- `pyproject.toml` — optional extras: `models-trees`, `models-ml`,
+  `models-econometric`, `models-bayes`, `models-ts`, `models-deep`.
+
+**Tests**
+- `test_library_robust.py`, `test_library_trees.py` (xgboost/catboost skip
+  cleanly when absent), `test_decomposition_router_models.py` (ridge →
+  closed-form, random_forest → ablation). Full unit suite: 295 passed, 2
+  skipped.
+
+**Verification**
+- `ROUTER__SMALL_N_THRESHOLD=100000` forces the small-N path → all 8 PPGs win
+  by `ridge`; full pipeline completes (decomposition 0.000%, validation 8/8
+  pass, insights revenue computed), proving non-legacy winners feed every
+  downstream stage.
+
+### Phase 8 — Remaining families (multi-entity) — DEFERRED
+Panel FE/RE, IV/2SLS, demand systems (logit/AIDS/BLP), VARX, GNN, and the deep
+sequence models are inherently multi-entity / multi-series and don't fit the
+current per-cell (`one PPG slice`) fitting loop. They need a multi-entity
+invocation path (pass a multi-PPG / multi-store frame to the plugin) — a
+separate effort from the per-cell router. Bayesian per-cell (BayesianRidge/BSTS)
+and per-cell time-series (ARIMAX/SARIMAX/ETS via statsmodels) and GAM/GP/SVR/kNN
+remain straightforward per-cell follow-ups.

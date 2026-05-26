@@ -31,6 +31,7 @@ from core.benchmarks.elasticity import (
 )
 from core.config import get_settings
 from core.features.engineering import ENGINEERED_COLUMNS, TARGET
+from core.models.predictor import PREDICTABLE_MODELS
 from core.orchestrator.state import AgentResult, ArtifactRef, RunState
 from core.validation.checks import Verdict, evaluate_ppg
 from core.validation.rolling import build_folds, fit_one_fold
@@ -46,7 +47,7 @@ out the way it did. Return STRICT JSON:
 JSON only, no prose. Cite only PPGs present in the input."""
 
 
-SUPPORTED_MODELS = {"loglog_ols", "semilog_ols", "lightgbm"}
+SUPPORTED_MODELS = PREDICTABLE_MODELS
 DEFAULT_N_FOLDS = 4
 
 
