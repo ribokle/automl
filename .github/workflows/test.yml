@@ -66,6 +66,7 @@ jobs:
           uv run --with pytest pytest
           tests/unit/test_library_panel.py
           tests/unit/test_library_causal.py
+          tests/unit/test_model_recovery_matrix.py
           -q --tb=short
 
   deep-extras:

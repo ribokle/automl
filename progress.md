@@ -1828,6 +1828,30 @@ Full unit suite: 322 passed, 13 skipped (optional deps).
 - CPU torch installed locally: LSTM & GRU train and emit 28-step forecasts
   (1.3k / 1.0k params) on a synthetic seasonal series.
 
+### Phase 8k — Multi-regime test datasets + recovery matrix ✅
+**Status:** complete. Models are now exercised across diverse data, not one
+generator.
+- `tests/datasets.py`: reusable synthetic regimes, each shaped for a family's
+  failure mode and calibrated to the published benchmark elasticities
+  (Hoch 1995 / Bijmolt 2005): `clean_panel`, `confounded_with_instrument`
+  (endogeneity + instrument), `seasonal_series`, `store_panel` (entity FE),
+  `cross_price_pair` (substitution), `outlier_promo` (leverage points). Each
+  returns `(frame, truth)` with benchmark-anchored ground truth.
+- `tests/unit/test_model_recovery_matrix.py`: runs each family against the
+  regime built for it and asserts recovery — linear models recover the
+  benchmark elasticity within a band, nonparametric/tree models recover sign,
+  DML/IV beat naive OLS under confounding, exog TS recover sign + forecast,
+  smoothing models forecast seasonality, panel FE/RE recover the within-entity
+  elasticity, the demand system recovers positive cross-price substitution, and
+  a robust fitter tracks the bulk elasticity under outliers.
+- `econometric-extras` CI job also runs the matrix so the IV/panel branches are
+  covered with linearmodels present.
+
+**Verification**
+- Base env: 341 passed, 16 skipped. With linearmodels: the full 22-case matrix
+  passes. Real public data (Dominick's) still plugs in via
+  `core/data/loaders/dominicks.py`; these regimes keep CI hermetic + licence-clean.
+
 ### Phase 8 — Remaining (intentionally not built)
 - **Structural demand systems** (logit/nested/AIDS/QUAIDS/BLP via `pyblp`):
   `pyblp` is fragile to build and needs market-share/expenditure data the panel
