@@ -41,7 +41,12 @@ from pathlib import Path
 import pandas as pd
 
 from core.agents.base import Agent
-from core.models.predictor import build_predictor
+from core.models.predictor import (
+    LINEAR_COEFF_MODELS,
+    PREDICTABLE_MODELS,
+    REFIT_MODELS,
+    build_predictor,
+)
 from core.optimization.constraints import OptimizationConstraints, PPGOptInputs
 from core.optimization.continuous import solve_continuous
 from core.optimization.milp import solve_milp
@@ -60,8 +65,8 @@ multiplier and any trade-off"}]}
 JSON only. Cite only PPGs in the input."""
 
 
-SUPPORTED_OLS_MODELS = {"loglog_ols", "semilog_ols"}
-SUPPORTED_MODELS = SUPPORTED_OLS_MODELS | {"lightgbm"}
+SUPPORTED_OLS_MODELS = LINEAR_COEFF_MODELS
+SUPPORTED_MODELS = PREDICTABLE_MODELS
 
 
 def _load_modeling(run_dir: Path) -> dict:
@@ -107,13 +112,13 @@ def _build_inputs(
 ) -> PPGOptInputs:
     import numpy as np
 
-    if model_kind in ("loglog_ols", "lightgbm"):
+    if model_kind == "semilog_ols":
+        base_price = float(slice_["price"].mean()) if "price" in slice_.columns else 1.0
+    else:
         log_base_price = (
             float(slice_["log_base_price"].mean()) if "log_base_price" in slice_.columns else 0.0
         )
         base_price = float(np.exp(log_base_price))
-    else:
-        base_price = float(slice_["price"].mean()) if "price" in slice_.columns else 1.0
 
     excluded = {
         "tpr_share",
@@ -204,7 +209,7 @@ def _clip_ladder_to_envelope(
     kept verbatim (better to surface a relaxed solution than to silently
     drop the PPG).
     """
-    if inp.model_kind != "lightgbm" or envelope is None or inp.base_price <= 0:
+    if inp.model_kind not in REFIT_MODELS or envelope is None or inp.base_price <= 0:
         return constraints, None
     lo, hi = envelope
     kept: list[float] = []
@@ -343,7 +348,7 @@ class OptimizationAgent(Agent):
                     continue
 
             inp = _build_inputs(ppg_id, slice_, row, controls_for_opt, winner)
-            envelope = _training_price_envelope(slice_) if winner == "lightgbm" else None
+            envelope = _training_price_envelope(slice_) if winner in REFIT_MODELS else None
             payload = await asyncio.to_thread(_optimise_one, inp, constraints, envelope)
             per_ppg.append(payload)
             envelope_clipped = bool(

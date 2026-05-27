@@ -27,6 +27,26 @@ from core.models.metrics import chronological_split
 
 OLS_KINDS = {"loglog_ols", "semilog_ols"}
 
+# Models whose downstream contribution is computed analytically from a
+# log-space coefficient vector (α + Σ βᵢ·xᵢ). Every fitter here emits a
+# ``coefficients`` dict with a ``const`` intercept.
+LINEAR_COEFF_MODELS = frozenset(
+    {
+        "loglog_ols",
+        "semilog_ols",
+        "ridge",
+        "lasso",
+        "elasticnet",
+        "huber",
+        "ransac",
+        "theil_sen",
+        "quantile",
+        "bayesian_ridge",
+        "double_ml",
+        "iv_2sls",
+    }
+)
+
 
 @dataclass
 class Predictor:
@@ -36,17 +56,19 @@ class Predictor:
     model_kind: str
     feature_cols: list[str]
     coefficients: dict[str, float] = field(default_factory=dict)
-    booster: Any = None  # LGBMRegressor when model_kind == "lightgbm"
+    booster: Any = None  # fitted tree estimator when the winner is tree-based
 
     def predict_log(self, frame: pd.DataFrame) -> np.ndarray:
         """Predict ``log_units`` for every row in ``frame``."""
-        if self.model_kind in OLS_KINDS:
-            return _predict_log_ols(self.coefficients, frame)
-        if self.model_kind == "lightgbm":
-            if self.booster is None:
-                raise RuntimeError("lightgbm predictor missing booster")
+        # Any tree estimator (lightgbm/random_forest/xgboost/…) is wrapped as a
+        # booster and scored directly.
+        if self.booster is not None:
             X = _design_for_lightgbm(frame, self.feature_cols)
             return np.asarray(self.booster.predict(X), dtype=float)
+        # OLS and any other linear-coefficient model (ridge/lasso/elasticnet/…)
+        # share the closed-form α + Σ βᵢ·xᵢ path.
+        if self.coefficients:
+            return _predict_log_ols(self.coefficients, frame)
         raise ValueError(f"unsupported model_kind={self.model_kind!r}")
 
     def predict_units(self, frame: pd.DataFrame) -> np.ndarray:
@@ -98,10 +120,8 @@ def build_predictor(
     winner = modeling_row.get("winner") or {}
     kind = str(modeling_row.get("winner_model") or winner.get("model") or "")
 
-    if kind in OLS_KINDS:
-        coefs = {k: float(v) for k, v in (winner.get("coefficients") or {}).items()}
-        if not coefs:
-            raise ValueError(f"{ppg_id}: OLS winner has no coefficients")
+    coefs = {k: float(v) for k, v in (winner.get("coefficients") or {}).items()}
+    if kind not in _REFIT_FACTORIES and "const" in coefs:
         feature_cols = [c for c in coefs if c != "const"]
         return Predictor(
             ppg_id=ppg_id,
@@ -110,14 +130,14 @@ def build_predictor(
             coefficients=coefs,
         )
 
-    if kind == "lightgbm":
+    if kind in _REFIT_FACTORIES:
         if test_ratio is None:
             train, _ = chronological_split(frame, test_ratio=0.2)
         elif test_ratio <= 0.0:
             train = frame
         else:
             train, _ = chronological_split(frame, test_ratio=test_ratio)
-        feature_cols, booster = _fit_lightgbm_booster(train, controls)
+        feature_cols, booster = _REFIT_FACTORIES[kind](train, controls)
         return Predictor(
             ppg_id=ppg_id,
             model_kind=kind,
@@ -160,3 +180,121 @@ def _fit_lightgbm_booster(
     )
     model.fit(X, y)
     return feature_cols, model
+
+
+def _tree_design(frame: pd.DataFrame, controls: list[str]) -> tuple[list[str], pd.DataFrame, np.ndarray]:
+    usable = [c for c in controls if c in frame.columns and c not in ("log_price", "log_units")]
+    usable = [c for c in usable if frame[c].nunique(dropna=True) > 1]
+    feature_cols = ["log_price"] + usable
+    sub = frame[["log_units", *feature_cols]].dropna()
+    X = sub[feature_cols].astype(float).copy()
+    y = sub["log_units"].astype(float).to_numpy()
+    return feature_cols, X, y
+
+
+def _fit_random_forest(frame: pd.DataFrame, controls: list[str]) -> tuple[list[str], Any]:
+    from sklearn.ensemble import RandomForestRegressor
+
+    feature_cols, X, y = _tree_design(frame, controls)
+    model = RandomForestRegressor(
+        n_estimators=300, min_samples_leaf=3, random_state=0, n_jobs=1
+    )
+    model.fit(X, y)
+    return feature_cols, model
+
+
+def _fit_extra_trees(frame: pd.DataFrame, controls: list[str]) -> tuple[list[str], Any]:
+    from sklearn.ensemble import ExtraTreesRegressor
+
+    feature_cols, X, y = _tree_design(frame, controls)
+    model = ExtraTreesRegressor(
+        n_estimators=300, min_samples_leaf=3, random_state=0, n_jobs=1
+    )
+    model.fit(X, y)
+    return feature_cols, model
+
+
+def _fit_xgboost(frame: pd.DataFrame, controls: list[str]) -> tuple[list[str], Any]:
+    from xgboost import XGBRegressor
+
+    feature_cols, X, y = _tree_design(frame, controls)
+    model = XGBRegressor(
+        n_estimators=300, learning_rate=0.05, max_depth=3, subsample=0.9,
+        random_state=0, verbosity=0,
+    )
+    model.fit(X, y)
+    return feature_cols, model
+
+
+def _fit_catboost(frame: pd.DataFrame, controls: list[str]) -> tuple[list[str], Any]:
+    from catboost import CatBoostRegressor
+
+    feature_cols, X, y = _tree_design(frame, controls)
+    model = CatBoostRegressor(
+        iterations=300, learning_rate=0.05, depth=4, random_seed=0,
+        verbose=False, allow_writing_files=False,
+    )
+    model.fit(X, y)
+    return feature_cols, model
+
+
+def _fit_gaussian_process(frame: pd.DataFrame, controls: list[str]) -> tuple[list[str], Any]:
+    from sklearn.gaussian_process import GaussianProcessRegressor
+    from sklearn.gaussian_process.kernels import RBF, WhiteKernel
+
+    feature_cols, X, y = _tree_design(frame, controls)
+    model = GaussianProcessRegressor(
+        kernel=RBF() + WhiteKernel(), normalize_y=True, random_state=0
+    )
+    model.fit(X, y)
+    return feature_cols, model
+
+
+def _fit_svr(frame: pd.DataFrame, controls: list[str]) -> tuple[list[str], Any]:
+    from sklearn.svm import SVR
+
+    feature_cols, X, y = _tree_design(frame, controls)
+    model = SVR(kernel="rbf", C=10.0)
+    model.fit(X, y)
+    return feature_cols, model
+
+
+def _fit_knn(frame: pd.DataFrame, controls: list[str]) -> tuple[list[str], Any]:
+    from sklearn.neighbors import KNeighborsRegressor
+
+    feature_cols, X, y = _tree_design(frame, controls)
+    model = KNeighborsRegressor(n_neighbors=min(10, max(2, len(y) // 5)))
+    model.fit(X, y)
+    return feature_cols, model
+
+
+def _fit_gam(frame: pd.DataFrame, controls: list[str]) -> tuple[list[str], Any]:
+    from pygam import LinearGAM
+
+    feature_cols, X, y = _tree_design(frame, controls)
+    model = LinearGAM().fit(X, y)
+    return feature_cols, model
+
+
+# Non-parametric winners refit on the PPG's train slice so downstream stages
+# can score them; the bare estimator's ``.predict`` is wrapped by ``Predictor``.
+# (Includes tree ensembles + kernel/instance models — all extrapolation-bounded
+# and therefore subject to the optimiser's training-price-envelope clipping.)
+_REFIT_FACTORIES: dict[str, Any] = {
+    "lightgbm": _fit_lightgbm_booster,
+    "random_forest": _fit_random_forest,
+    "extra_trees": _fit_extra_trees,
+    "xgboost": _fit_xgboost,
+    "catboost": _fit_catboost,
+    "gaussian_process": _fit_gaussian_process,
+    "svr": _fit_svr,
+    "knn": _fit_knn,
+    "gam": _fit_gam,
+}
+
+REFIT_MODELS = frozenset(_REFIT_FACTORIES)
+
+# Every winner kind a ``Predictor`` can score, so downstream stages
+# (decomposition / simulation / optimization / validation) gate against one
+# source of truth instead of hardcoded per-file lists.
+PREDICTABLE_MODELS = LINEAR_COEFF_MODELS | REFIT_MODELS

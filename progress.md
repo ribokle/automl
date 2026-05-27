@@ -1527,3 +1527,341 @@ awareness so there was nothing to compare past modelling.
   ``comparison_agents=["modeling"]`` to preserve its tight scope.
   Full suite: 259 passed, 3 skipped. ``tsc --noEmit`` clean,
   ``next build`` clean.
+
+## Phase 8 — Model Library + LLM-Driven Router
+
+Research catalog of ~60 price/promo models across 12 families written to
+`model_plan.md` (repo root). Design recorded in the planning doc.
+
+### Phase 8a — Contracts, registry, light families + router scaffolding ✅
+**Status:** complete (router not yet wired into the modelling agent;
+`model_library.router_enabled` defaults `False`, so the legacy
+`_fit_one_ppg` path remains the default and all existing tests stay green).
+
+**Backend**
+- `core/models/result.py` — generalised `ModelResult` (scalar elasticity /
+  cross-price matrix / `ForecastBlock`), `ProblemType` + `Capability`
+  enums, `from_elasticity_fit` / `to_elasticity_fit` adapter. The adapter
+  returns `None` when no scalar elasticity exists (pure forecasters / demand
+  systems) and lifts a cross-price diagonal into `own_elasticity`.
+- `core/models/library/` — plugin scaffolding: `base.py`
+  (`ModelPlugin` protocol + `BaseModelPlugin` with lazy `find_spec` dep
+  probing + `FitContext`), `registry.py` (decorator registry +
+  availability filter), `diagnostics.py` (`DataProfile`). Light families
+  registered: classical (`loglog_ols`, `semilog_ols` wrappers), regularized
+  (`ridge`, `lasso`, `elasticnet` via shared `_sklearn_linear` helper),
+  trees (`lightgbm` wrapper). Heavier family packages import defensively.
+- `core/models/router/` — `DeterministicRouter` (pure, config-driven,
+  dry-run fallback), `LLMRouter` (parses strict-JSON candidates, falls back
+  to rules on dry-run / parse failure / unknown key), `run_escalation`
+  (fit → evaluate → escalate; stops at first acceptable fit), and shared
+  `core/models/selection.py` (`pick_winner` / `fit_acceptable`).
+- `core/models/predictor.py` — `build_predictor` now drives any
+  linear-coefficient winner (ridge/lasso/elasticnet) through the OLS
+  closed-form path, so regularized winners feed downstream unchanged.
+- `core/config.py` — `ModelLibrarySettings`, `RouterSettings`,
+  `ModelHparams` blocks (every escalation gate + hyperparameter
+  configurable; `env_nested_delimiter="__"`). No magic numbers in code.
+
+**Tests**
+- `test_model_result.py`, `test_library_registry.py`, `test_router.py`,
+  `test_library_regularized.py`, `test_library_no_cross_import.py` (AST
+  invariant: no model module imports a sibling model), `test_escalation.py`.
+  Full unit suite: 280 passed.
+
+**Verification**
+- Library imports with light deps only; registry = {loglog_ols, semilog_ols,
+  lightgbm, ridge, lasso, elasticnet}. Ridge/Lasso/ElasticNet recover the
+  negative elasticity sign on synthetic. Router selection deterministic and
+  drops unavailable candidates while always keeping the legacy trio tail.
+
+### Phase 8c — Router wired into the modelling agent ✅
+**Status:** complete. The router is now invoked by the pipeline behind
+`model_library.router_enabled` (default `False`, so the legacy three-candidate
+path stays the default and all prior behaviour is unchanged).
+
+**Backend**
+- `core/agents/modeling.py` — when `router_enabled`, each cell computes a
+  `DataProfile`, the router picks an ordered candidate set (deterministic rules
+  in dry-run / `mode="rules"`, else LLM with rules fallback), and
+  `run_escalation` fits in order and stops at the first acceptable fit.
+  `_fit_one_ppg_routed` shapes the row identically to the legacy path so every
+  downstream consumer is unaffected. Per-run overrides
+  (`run.options["modeling"]`) merge over global config via `_resolve_config`,
+  so a rerun can re-model with a different enabled set / router mode / problem
+  type. Pre-fit gate thresholds now read from config.
+- New artifact `router_decision.json` (per-cell router, candidate list, data
+  profile). `modeling_results.json` gains `router_enabled` + a router-aware
+  `model_pool`.
+- `core/models/router/escalation.py` — `run_escalation` accepts per-candidate
+  `hparams` (each plugin's config block) via `dataclasses.replace`.
+- `core/orchestrator/gates.py` — `modeling` added to `RERUNNABLE_AGENTS`. Safe
+  because the modelling gate pauses before every downstream stage, so on
+  approval the DAG re-runs decomposition→insights against the fresh
+  elasticities.
+
+**Tests**
+- `tests/unit/test_modeling_router.py` (routed run writes `router_decision.json`
+  + recovers sign; legacy path writes none; `_resolve_config` applies per-run
+  overrides without mutating global settings). `test_gate_rerun.py` updated
+  (modeling now whitelisted; non-rerunnable example switched to
+  `decomposition`). Full unit suite: 283 passed.
+
+**Verification**
+- `MODEL_LIBRARY__ROUTER_ENABLED=true automl run --no-gates` on the synthetic
+  panel: 8/8 correct elasticity signs, decomposition reconciles to 0.000%, and
+  optimisation/validation/insights complete. Routed winners (7 loglog_ols, 1
+  lightgbm) feed the predictor unchanged.
+
+### Phase 8b — Robust/quantile + tree families, downstream-compatible ✅
+**Status:** complete. Eight more models registered; all flow through the full
+DAG (decomposition / simulation / optimisation / validation) without special
+casing.
+
+**Backend**
+- New plugins: robust/quantile (`huber`, `ransac`, `theil_sen`, `quantile` —
+  log-log linear via shared `_sklearn_linear`) and trees (`random_forest`,
+  `extra_trees` on scikit-learn; `xgboost`, `catboost` as optional extras via
+  shared `_tree_common` bump-elasticity). All escalation/router-aware.
+- `core/models/predictor.py` — canonical capability sets `LINEAR_COEFF_MODELS`
+  (analytic α+Σβx path) and `TREE_MODELS` (refit-and-score), unioned as
+  `PREDICTABLE_MODELS`. `Predictor` scores any tree estimator via its booster;
+  `build_predictor` refits RF/ExtraTrees/XGB/CatBoost. Downstream agents
+  (`decomposition`, `simulation`, `optimization`, `validation`) now gate on
+  these shared sets instead of hardcoded `{loglog, semilog, lightgbm}`.
+- The price-sweep math (`core/optimization/predict.py`,
+  `core/simulation/grid.py`) and the downstream base-price / envelope-clip
+  branches were generalised to the rule "**only `semilog_ols` is raw-price;
+  every other model is log-price space**", so the new linear + tree winners
+  simulate / optimise correctly.
+- `core/validation/rolling.py:fit_one_fold` now refits via the registry, so
+  any registered model can be rolling-CV'd.
+- `pyproject.toml` — optional extras: `models-trees`, `models-ml`,
+  `models-econometric`, `models-bayes`, `models-ts`, `models-deep`.
+
+**Tests**
+- `test_library_robust.py`, `test_library_trees.py` (xgboost/catboost skip
+  cleanly when absent), `test_decomposition_router_models.py` (ridge →
+  closed-form, random_forest → ablation). Full unit suite: 295 passed, 2
+  skipped.
+
+**Verification**
+- `ROUTER__SMALL_N_THRESHOLD=100000` forces the small-N path → all 8 PPGs win
+  by `ridge`; full pipeline completes (decomposition 0.000%, validation 8/8
+  pass, insights revenue computed), proving non-legacy winners feed every
+  downstream stage.
+
+### Phase 8c-ml — Other ML / nonparametric family ✅
+**Status:** complete. Four more per-cell, downstream-compatible models.
+
+**Backend**
+- New `ml_nonparam` plugins: `bayesian_ridge` (linear-coefficient → analytic
+  downstream path), `gaussian_process`, `svr`, `knn` (refit-scored via the
+  shared bump-elasticity helper).
+- `core/models/predictor.py` — `TREE_MODELS`/`_TREE_KINDS` renamed to the honest
+  `REFIT_MODELS`/`_REFIT_FACTORIES` (now also covers GP/SVR/kNN); added their
+  refit factories; `bayesian_ridge` added to `LINEAR_COEFF_MODELS`. All eight
+  refit models are envelope-clipped by the optimiser like the trees.
+- Registry now holds 18 models (12 available with base deps; xgboost/catboost
+  optional).
+
+**Tests**
+- `test_library_ml_nonparam.py`. Full unit suite: 300 passed, 2 skipped.
+
+### Phase 8d — FORECAST problem path + time-series family ✅
+**Status:** complete. Time-series models fit per-cell and produce forecasts on a
+dedicated FORECAST path, distinct from the price-optimisation flow.
+
+**Backend**
+- New `timeseries` plugins (statsmodels, base dep): `arimax`, `sarimax`
+  (seasonal, auto-falls-back to non-seasonal on short windows), `state_space`
+  (UnobservedComponents) — all emit a `ForecastBlock` AND a log_price-exog
+  elasticity; `ets`, `holt_winters` — forecast-only. Optional: `prophet`,
+  `tbats` (graceful skip). Shared `_statsmodels_ts` helper.
+- `core/models/router/escalation.py:run_forecast_escalation` ranks candidates
+  by hold-out forecast WAPE (keeps any model that produced a forecast;
+  elasticity optional). `rules.py` FORECAST preferences now pick the TS family.
+- `core/agents/modeling.py`: when `router.default_problem_type == "forecast"`,
+  `_forecast_one_ppg_routed` runs the forecast escalation and the agent writes
+  a new `forecasts.json` artifact (per-PPG `ForecastBlock` + winning model +
+  hold-out WAPE + elasticity when available). TS winners aren't price-sweepable
+  so they're intentionally absent from `PREDICTABLE_MODELS`; the existing
+  artifact collectors + downstream agents skip them gracefully.
+
+**Tests**
+- `test_library_timeseries.py` (forecast horizon + WAPE; exog models recover
+  negative elasticity; smoothing models have none; prophet/tbats skip clean),
+  `test_modeling_forecast.py` (forecast-mode run writes `forecasts.json`).
+  Full unit suite: 311 passed, 5 skipped (optional deps).
+
+**Verification**
+- `router_enabled=true, default_problem_type=forecast` on a synthetic seasonal
+  panel: ARIMAX wins both PPGs, horizon-26 forecasts written, elasticities
+  recovered (-1.49 vs truth -1.5, -2.03 vs -2.0).
+
+### Phase 8e — Double Machine Learning (causal) ✅
+**Status:** complete. Endogeneity-corrected per-cell elasticity, no new dep.
+
+**Backend**
+- New `causal` plugin `double_ml`: partially-linear DML — RandomForest nuisance
+  models residualise log_units and log_price on the controls via cross-fitting,
+  θ (own-price elasticity) is the residual OLS slope, and control coefficients
+  are recovered on the θ-adjusted target so the winner is a full predictor-
+  compatible log-space coefficient vector. Added to `LINEAR_COEFF_MODELS`;
+  appears in the router's default large-N preference.
+
+**Tests**
+- `test_library_causal.py` (recovers a negative, confounding-corrected
+  elasticity under price-control confounding; predictor-compatible). Full unit
+  suite: 313 passed, 5 skipped.
+
+### Phase 8f — Hardening ✅
+**Status:** complete.
+- `core/models/library/registry.py:catalog()` + `automl models` CLI command
+  (Rich table; `--available-only`) introspect the registry (key / family /
+  problem types / availability / required packages).
+- CI: new `optional-extras` job in `.github/workflows/test.yml` runs
+  `uv sync --dev --extra models-trees` then the trees + hardening tests, so the
+  *real* xgboost/catboost path is exercised in CI (the default job only sees
+  the graceful-skip side). Validated locally: with the extra installed, both
+  flip to available and the trees tests run real fits (8 passed, 0 skipped).
+- `tests/unit/test_library_hardening.py`: base-deps registry guarantees, the
+  catalog shape, the registered-but-unavailable contract, and a dry-run
+  router-modeling end-to-end.
+- `model_plan.md`: implementation-status section + a "how to add a plugin"
+  guide (lazy deps, no-cross-import rule, hparams, downstream wiring).
+- All new code ruff-clean (pre-existing repo lint debt untouched).
+
+### Phase 8g — Multi-entity path: cross-price demand system ✅
+**Status:** complete. First multi-entity model + a DEMAND_SYSTEM problem path.
+
+**Backend**
+- New `demand_system/crossprice_loglog` plugin: fits ONE log-log equation for a
+  target PPG against EVERY PPG's log price (+ the target's controls), so the
+  own-price coefficient is the own elasticity and the others are cross-price
+  (cannibalisation) elasticities. Takes the FULL multi-PPG frame (pivots to
+  wide internally, chronological split). statsmodels OLS, no new dep.
+  Capabilities `SCALAR_ELASTICITY | CROSS_PRICE_MATRIX | NEEDS_PANEL`; not
+  price-sweepable so it stays out of `PREDICTABLE_MODELS` (downstream skips).
+- `core/agents/modeling.py`: `default_problem_type="demand_system"` runs
+  `_system_one_ppg_routed` per PPG over the full frame and writes a new
+  `cross_price_matrix.json` (ppgs, own elasticities, full N×N matrix). Mirrors
+  the FORECAST path's structure.
+- Router DEMAND_SYSTEM / CROSS_PRICE preferences lead with `crossprice_loglog`.
+
+**Tests**
+- `test_library_demand_system.py`: recovers own (<0) + substitute cross (>0) +
+  independent (~0) signs; requires >= 2 PPGs; the demand-system run writes
+  `cross_price_matrix.json`. Full unit suite: 320 passed, 5 skipped.
+
+**Verification**
+- Synthetic 3-PPG system (P2 substitutes for P1): own elasticities recovered
+  (-1.50/-2.00/-1.00), cross P1←P2 = +0.62 (truth +0.6), P1←P3 ≈ 0.
+
+### Phase 8h — Panel path: fixed / random effects ✅
+**Status:** complete. Second multi-entity family + a PANEL problem path.
+
+**Backend**
+- New `panel/fixed_effects` + `panel/random_effects` plugins (optional dep
+  `linearmodels`): pool ONE PPG across its entities (stores) — entity =
+  `grain_unit`, time = `week_start` — and report the within-entity own-price
+  elasticity. Shared `_panel_common` reshapes the target PPG to a (entity, time)
+  panel (coercing the time index from CSV strings). `NEEDS_PANEL`; not
+  price-sweepable so out of `PREDICTABLE_MODELS`.
+- `ProblemType.PANEL` + a PANEL agent branch: at store grains it bypasses the
+  per-(PPG, store) cell split, fits one panel model per PPG over all its stores,
+  and writes `panel_elasticity.json`. Router PANEL preference = `[fixed_effects,
+  random_effects]`.
+- `pyproject.toml`: `models-econometric` slimmed to `linearmodels` (dropped the
+  fragile `pyblp`); new `econometric-extras` CI job installs it and runs the
+  panel tests so the real linearmodels path is covered.
+
+**Tests**
+- `test_library_panel.py` (FE/RE recover ≈ truth within-entity elasticity on a
+  6-store synthetic panel; need ≥2 entities; the panel run writes
+  `panel_elasticity.json`). Skips cleanly without linearmodels. Full unit suite:
+  321 passed, 9 skipped (optional deps); with linearmodels: panel tests pass.
+
+**Verification**
+- Synthetic 6-store panel with store fixed effects: FE & RE both recover -1.702
+  (truth -1.7); a 2-PPG store-grain run recovers -1.70 / -2.30.
+
+### Phase 8i — Instrumental variables (2SLS), opt-in ✅
+**Status:** complete. Endogeneity correction via instruments, fully opt-in.
+- New `causal/iv_2sls` plugin (optional dep `linearmodels`): instruments
+  `log_price` with operator-nominated cost-shifter columns
+  (`hparams['instruments']`). Raises (and the escalation skips it) unless an
+  instrument is both configured AND present, so it never perturbs a default
+  run. Emits a full log-space coefficient vector → predictor-compatible
+  (`LINEAR_COEFF_MODELS`). Sits at position 4 of the OWN_ELASTICITY preference
+  so it's reachable when enabled but won't be reached before loglog under the
+  default `max_candidates`.
+- `ModelHparams.iv_2sls` block for the `instruments` list; `econometric-extras`
+  CI job now also runs the causal tests.
+
+**Tests** (`test_library_causal.py`, skip without linearmodels): IV requires
+instruments (raises otherwise) and recovers an elasticity much closer to truth
+than the confounded OLS slope. Full unit suite: 321 passed, 11 skipped.
+
+**Verification**
+- Endogenous synthetic (unobserved confounder + `log_cost` instrument): naive
+  OLS slope -0.80 (biased), IV recovers -1.45 (truth -1.5).
+
+### Phase 8j — Deep sequence forecasters (opt-in torch) ✅
+**Status:** complete and validated against real CPU torch.
+- New `deep/lstm` + `deep/gru` plugins (optional dep `torch`): a small
+  recurrent net forecasts `log_units` from a sliding window of
+  `[log_units, log_price, *controls]`; the hold-out horizon is rolled forward
+  recursively using the KNOWN future exog + fed-back unit predictions.
+  Forecast-only (no elasticity), so out of `PREDICTABLE_MODELS`. Shared
+  `_torch_seq` helper imports torch lazily. Deterministic via `torch.manual_seed`.
+- Sit at the TAIL of the FORECAST preference (positions 5–7), so a default
+  forecast run (`max_candidates`=4) never invokes torch — opt-in by construction.
+- `models-deep` extra slimmed to `torch`; new `deep-extras` CI job installs CPU
+  torch (PyTorch CPU index) and runs the deep tests.
+
+**Tests** (`test_library_deep.py`, skip without torch): LSTM/GRU produce a
+horizon-correct `ForecastBlock`, are forecast-only, and report hold-out WAPE.
+Full unit suite: 322 passed, 13 skipped (optional deps).
+
+**Verification**
+- CPU torch installed locally: LSTM & GRU train and emit 28-step forecasts
+  (1.3k / 1.0k params) on a synthetic seasonal series.
+
+### Phase 8k — Multi-regime test datasets + recovery matrix ✅
+**Status:** complete. Models are now exercised across diverse data, not one
+generator.
+- `tests/datasets.py`: reusable synthetic regimes, each shaped for a family's
+  failure mode and calibrated to the published benchmark elasticities
+  (Hoch 1995 / Bijmolt 2005): `clean_panel`, `confounded_with_instrument`
+  (endogeneity + instrument), `seasonal_series`, `store_panel` (entity FE),
+  `cross_price_pair` (substitution), `outlier_promo` (leverage points). Each
+  returns `(frame, truth)` with benchmark-anchored ground truth.
+- `tests/unit/test_model_recovery_matrix.py`: runs each family against the
+  regime built for it and asserts recovery — linear models recover the
+  benchmark elasticity within a band, nonparametric/tree models recover sign,
+  DML/IV beat naive OLS under confounding, exog TS recover sign + forecast,
+  smoothing models forecast seasonality, panel FE/RE recover the within-entity
+  elasticity, the demand system recovers positive cross-price substitution, and
+  a robust fitter tracks the bulk elasticity under outliers.
+- `econometric-extras` CI job also runs the matrix so the IV/panel branches are
+  covered with linearmodels present.
+
+**Verification**
+- Base env: 341 passed, 16 skipped. With linearmodels: the full 22-case matrix
+  passes. Real public data (Dominick's) still plugs in via
+  `core/data/loaders/dominicks.py`; these regimes keep CI hermetic + licence-clean.
+
+### Phase 8 — Remaining (intentionally not built)
+- **Structural demand systems** (logit/nested/AIDS/QUAIDS/BLP via `pyblp`):
+  `pyblp` is fragile to build and needs market-share/expenditure data the panel
+  doesn't model. `ModelResult.cross_price` already accommodates them if added.
+- **Heavyweight deep forecasters** (DeepAR/TFT/N-BEATS via
+  pytorch-forecasting/neuralforecast): the plain-torch LSTM/GRU cover the deep
+  family; these add framework weight without a different capability here.
+  logit/AIDS/BLP, VARX, GNN, hierarchical Bayes via pymc): need a multi-PPG /
+  multi-store frame passed to the plugin, not a single PPG slice.
+- **Deep sequence models** (DeepAR/LSTM/GRU/TFT/N-BEATS): forecast-path models
+  needing torch; slot onto the FORECAST path now that it exists.
+The registry + `ModelResult` (forecast/cross-price) + capability flags already
+accommodate these.

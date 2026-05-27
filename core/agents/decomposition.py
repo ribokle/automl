@@ -36,9 +36,15 @@ from core.decomp.due_to import (
     summarise_ppg,
 )
 from core.decomp.groups import FEATURE_TO_GROUP, GROUP_ORDER, group_for
-from core.models.loglog_ols import fit_loglog
-from core.models.predictor import build_predictor
-from core.models.semilog_ols import fit_semilog
+import core.models.library  # noqa: F401 — register model plugins
+from core.models.library import registry as model_registry
+from core.models.library.base import FitContext
+from core.models.predictor import (
+    LINEAR_COEFF_MODELS,
+    PREDICTABLE_MODELS,
+    REFIT_MODELS,
+    build_predictor,
+)
 from core.orchestrator.state import AgentResult, ArtifactRef, RunState
 
 
@@ -53,8 +59,8 @@ driver(s) and why"}]}
 JSON only. Cite only PPGs that appear in the input."""
 
 
-SUPPORTED_OLS_MODELS = {"loglog_ols", "semilog_ols"}
-SUPPORTED_MODELS = SUPPORTED_OLS_MODELS | {"lightgbm"}
+SUPPORTED_OLS_MODELS = LINEAR_COEFF_MODELS
+SUPPORTED_MODELS = PREDICTABLE_MODELS
 
 
 def _load_features(run_dir: Path) -> pd.DataFrame:
@@ -78,15 +84,14 @@ def _load_modeling(run_dir: Path) -> dict:
 
 
 def _refit_for_decomp(model_kind: str, ppg_id: str, frame: pd.DataFrame, controls: list[str]):
-    """Refit the winning OLS family on the FULL frame (no holdout).
-
-    Returns the coefficients dict the closed-form decomposition needs.
-    """
-    if model_kind == "loglog_ols":
-        return fit_loglog(ppg_id, frame, controls).coefficients
-    if model_kind == "semilog_ols":
-        return fit_semilog(ppg_id, frame, controls).coefficients
-    raise ValueError(f"closed-form decomposition not implemented for {model_kind}")
+    """Refit the winning linear-coefficient model on the FULL frame (no
+    holdout) via its registry plugin, returning the coefficients dict the
+    closed-form decomposition needs."""
+    plugin = model_registry.get(model_kind)
+    coefs = plugin.fit(frame, FitContext(ppg_id=ppg_id, controls=controls)).coefficients
+    if not coefs:
+        raise ValueError(f"closed-form decomposition needs coefficients for {model_kind}")
+    return coefs
 
 
 def _decompose_one_ppg(
@@ -107,8 +112,8 @@ def _decompose_one_ppg(
         summary["attribution_method"] = "closed_form"
         return weekly, summary
 
-    if model_kind == "lightgbm":
-        # Refit LightGBM on the FULL frame (no holdout) so every observed
+    if model_kind in REFIT_MODELS:
+        # Refit the tree on the FULL frame (no holdout) so every observed
         # week is attributed.
         predictor = build_predictor(modeling_row, frame, controls, test_ratio=0.0)
         weekly = decompose_via_ablation(predictor, frame)

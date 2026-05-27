@@ -25,6 +25,68 @@ jobs:
       - name: Unit tests
         run: uv run --with pytest pytest tests/unit/ -q -m "not slow" --tb=short
 
+  optional-extras:
+    name: Optional model extras (graceful-dep path)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      # Installs xgboost + catboost so the optional tree plugins flip from
+      # "registered but unavailable" to a real fit — exercising both sides of
+      # the graceful-dependency contract that the default job cannot.
+      - name: Install with model extras
+        run: uv sync --dev --extra models-trees
+
+      - name: Optional-extra model tests
+        run: >
+          uv run --with pytest pytest
+          tests/unit/test_library_trees.py
+          tests/unit/test_library_hardening.py
+          -q --tb=short
+
+  econometric-extras:
+    name: Panel/econometric extra (linearmodels)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: Install with econometric extra
+        run: uv sync --dev --extra models-econometric
+
+      - name: Panel + IV model tests
+        run: >
+          uv run --with pytest pytest
+          tests/unit/test_library_panel.py
+          tests/unit/test_library_causal.py
+          tests/unit/test_model_recovery_matrix.py
+          -q --tb=short
+
+  deep-extras:
+    name: Deep-learning extra (CPU torch)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: Install deps + CPU torch
+        run: |
+          uv sync --dev
+          uv pip install torch --index-url https://download.pytorch.org/whl/cpu
+
+      - name: Deep sequence-model tests
+        run: uv run --with pytest pytest tests/unit/test_library_deep.py -q --tb=short
+
   node:
     name: Next.js type-check & build
     runs-on: ubuntu-latest

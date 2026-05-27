@@ -18,7 +18,7 @@ import os
 from enum import Enum
 from functools import lru_cache
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
@@ -64,12 +64,54 @@ class ValidationThresholds(BaseModel):
     elasticity_high: float = 6.0
 
 
+class ModelLibrarySettings(BaseModel):
+    """Knobs for the plugin model library + escalation gates.
+
+    The gate fields below replace the former module-level constants in
+    ``core.agents.modeling`` so every threshold is configurable.
+    """
+
+    router_enabled: bool = False
+    enabled_models: list[str] = Field(default_factory=list)
+    disabled_models: list[str] = Field(default_factory=list)
+    max_candidates: int = 4
+    min_rows_for_fit: int = 20
+    log_price_std_floor: float = 0.01
+    winner_magnitude_ceiling: float = 8.0
+    wape_escalate_floor: float = 0.30
+    rng_seed: int = 0
+
+
+class RouterSettings(BaseModel):
+    """Controls how the model-selection router chooses candidates."""
+
+    mode: Literal["auto", "llm", "rules"] = "auto"
+    default_problem_type: Literal[
+        "own_elasticity", "cross_price", "forecast", "promo_uplift", "demand_system", "panel"
+    ] = "own_elasticity"
+    small_n_threshold: int = 60
+    panel_min_entities: int = 8
+    seasonality_min_length: int = 52
+
+
+class ModelHparams(BaseModel):
+    """Per-family hyperparameter overrides. Each plugin merges its block over
+    ``default_hparams()`` — empty means use the plugin defaults."""
+
+    ridge: dict[str, Any] = Field(default_factory=dict)
+    lasso: dict[str, Any] = Field(default_factory=dict)
+    elasticnet: dict[str, Any] = Field(default_factory=dict)
+    lightgbm: dict[str, Any] = Field(default_factory=dict)
+    iv_2sls: dict[str, Any] = Field(default_factory=dict)
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
+        env_nested_delimiter="__",
     )
 
     anthropic_api_key: SecretStr | None = None
@@ -99,6 +141,10 @@ class Settings(BaseSettings):
     validation: ValidationThresholds = ValidationThresholds()
 
     modelling_grain: ModellingGrain = ModellingGrain.PPG_WEEK
+
+    model_library: ModelLibrarySettings = ModelLibrarySettings()
+    router: RouterSettings = RouterSettings()
+    model_hparams: ModelHparams = ModelHparams()
 
     @field_validator("allowed_origins", mode="before")
     @classmethod
