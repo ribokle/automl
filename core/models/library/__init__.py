@@ -15,6 +15,7 @@ from __future__ import annotations
 from core.models.library import (  # noqa: F401,E402
     causal,
     classical,
+    demand_system,
     ml_nonparam,
     registry,
     regularized,

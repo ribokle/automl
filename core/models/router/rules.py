@@ -29,9 +29,7 @@ class DeterministicRouter:
                 return ["ridge", "loglog_ols", "lasso", "huber"]
             return ["loglog_ols", "elasticnet", "double_ml", "lightgbm"]
         if problem == ProblemType.CROSS_PRICE:
-            if profile.has_cross_price_cols:
-                return ["aids", "nested_logit", "loglog_ols"]
-            return ["loglog_ols", "elasticnet"]
+            return ["crossprice_loglog", "aids", "nested_logit"]
         if problem == ProblemType.FORECAST:
             if profile.seasonality_detected:
                 return ["sarimax", "holt_winters", "ets", "state_space", "prophet"]
@@ -39,7 +37,7 @@ class DeterministicRouter:
         if problem == ProblemType.PROMO_UPLIFT:
             return ["baseline_uplift", "uplift_causal_tree", "lightgbm"]
         if problem == ProblemType.DEMAND_SYSTEM:
-            return ["aids", "blp", "nested_logit"]
+            return ["crossprice_loglog", "aids", "blp", "nested_logit"]
         return list(LEGACY_TAIL)
 
     def select(

@@ -41,13 +41,12 @@ from core.models.lightgbm_model import fit_lightgbm
 from core.models.loglog_ols import fit_loglog
 from core.models.metrics import chronological_split
 from core.models.predictor import build_predictor
+from core.models.result import ProblemType, to_elasticity_fit
 from core.models.router.escalation import run_escalation, run_forecast_escalation
 from core.models.router.llm_router import LLMRouter
 from core.models.router.rules import DeterministicRouter
-from core.models.result import ProblemType, to_elasticity_fit
 from core.models.semilog_ols import fit_semilog
 from core.orchestrator.state import AgentResult, ArtifactRef, RunState
-
 
 SYSTEM_PROMPT = """You are the pricing-elasticity analyst. You receive a JSON
 table of per-PPG model candidates with own-price elasticity, std error,
@@ -317,6 +316,84 @@ def _forecast_one_ppg_routed(
     return row, entry
 
 
+def _system_one_ppg_routed(
+    ppg_id: str,
+    feats: pd.DataFrame,
+    controls: list[str],
+    candidates: list[str],
+    *,
+    grain: str,
+    hparams: dict[str, dict],
+    rng_seed: int,
+) -> tuple[dict, dict | None]:
+    """DEMAND_SYSTEM variant: fit one cross-price equation for the target PPG
+    against EVERY PPG's price (the full ``feats`` frame), returning (modeling
+    row, the PPG's cross-price row)."""
+    key = next(
+        (k for k in candidates if model_registry.has(k) and model_registry.get(k).is_available()),
+        None,
+    )
+    base_router = {"problem_type": ProblemType.DEMAND_SYSTEM.value, "candidates": candidates}
+    if key is None:
+        return {
+            "ppg_id": ppg_id,
+            "winner_model": "no_system",
+            "sign_retry_fired": False,
+            "attempts": [],
+            "winner": None,
+            "n_train": 0,
+            "n_test": 0,
+            "skip_reason": "router_no_system",
+            "router": {**base_router, "errors": {}},
+        }, None
+
+    ctx = FitContext(
+        ppg_id=ppg_id,
+        controls=controls,
+        test=None,
+        grain=grain,
+        problem_type=ProblemType.DEMAND_SYSTEM,
+        hparams=hparams.get(key, {}),
+        rng_seed=rng_seed,
+    )
+    try:
+        result = model_registry.get(key).fit(feats, ctx)
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "ppg_id": ppg_id,
+            "winner_model": "no_system",
+            "sign_retry_fired": False,
+            "attempts": [],
+            "winner": None,
+            "n_train": 0,
+            "n_test": 0,
+            "skip_reason": "system_error",
+            "router": {**base_router, "errors": {key: f"{type(exc).__name__}: {exc}"}},
+        }, None
+
+    ef = to_elasticity_fit(result)
+    row: dict = {
+        "ppg_id": ppg_id,
+        "winner_model": key,
+        "sign_retry_fired": False,
+        "attempts": [ef.to_dict()] if ef else [],
+        "winner": ef.to_dict() if ef else None,
+        "n_train": int(result.n_obs),
+        "n_test": int(result.diagnostics.get("n_test", 0)),
+        "router": {**base_router, "errors": {}},
+    }
+    cross_entry: dict | None = None
+    if result.cross_price and ppg_id in result.cross_price:
+        cross_entry = {
+            "ppg_id": ppg_id,
+            "model": key,
+            "own_elasticity": result.own_elasticity,
+            "test_wape": result.diagnostics.get("test_wape"),
+            "cross": result.cross_price[ppg_id],
+        }
+    return row, cross_entry
+
+
 class ModelingAgent(Agent):
     name = "modeling"
 
@@ -331,9 +408,11 @@ class ModelingAgent(Agent):
         dry_run = self.llm.provider.value == "dry_run"
         problem = ProblemType(rtr.default_problem_type)
         is_forecast = routed and problem == ProblemType.FORECAST
+        is_demand_system = routed and problem == ProblemType.DEMAND_SYSTEM
         eff_enabled = _effective_enabled(lib) if routed else set()
         router_decisions: list[dict] = []
         forecasts: list[dict] = []
+        cross_price_rows: list[dict] = []
 
         feats = await asyncio.to_thread(_load_features, run_dir)
         eligible = _load_eligible_ppgs(run_dir)
@@ -477,6 +556,19 @@ class ModelingAgent(Agent):
                         if fc_entry is not None:
                             fc_entry["grain_unit"] = unit_id
                             forecasts.append(fc_entry)
+                    elif is_demand_system:
+                        row, x_entry = await asyncio.to_thread(
+                            _system_one_ppg_routed,
+                            ppg_id,
+                            feats,
+                            controls,
+                            candidates,
+                            grain=grain_str,
+                            hparams=hparams,
+                            rng_seed=lib.rng_seed,
+                        )
+                        if x_entry is not None:
+                            cross_price_rows.append(x_entry)
                     else:
                         row = await asyncio.to_thread(
                             _fit_one_ppg_routed,
@@ -600,6 +692,32 @@ class ModelingAgent(Agent):
                     mime="application/json",
                     agent=self.name,
                     name=forecasts_path.name,
+                )
+            )
+
+        if is_demand_system:
+            matrix = {r["ppg_id"]: r["cross"] for r in cross_price_rows}
+            own = {r["ppg_id"]: r["own_elasticity"] for r in cross_price_rows}
+            ppg_order = sorted(matrix)
+            cross_path = run_dir / "cross_price_matrix.json"
+            cross_path.write_text(
+                json.dumps(
+                    {
+                        "problem_type": problem.value,
+                        "ppgs": ppg_order,
+                        "own_elasticity": own,
+                        "matrix": matrix,
+                    },
+                    indent=2,
+                    default=float,
+                )
+            )
+            result.artifacts.append(
+                ArtifactRef(
+                    path=str(cross_path),
+                    mime="application/json",
+                    agent=self.name,
+                    name=cross_path.name,
                 )
             )
 

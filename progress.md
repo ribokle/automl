@@ -1732,8 +1732,38 @@ dedicated FORECAST path, distinct from the price-optimisation flow.
   guide (lazy deps, no-cross-import rule, hparams, downstream wiring).
 - All new code ruff-clean (pre-existing repo lint debt untouched).
 
-### Phase 8 — Still deferred (need a multi-entity path)
-- **Multi-entity** (panel FE/RE, IV/2SLS, demand systems
+### Phase 8g — Multi-entity path: cross-price demand system ✅
+**Status:** complete. First multi-entity model + a DEMAND_SYSTEM problem path.
+
+**Backend**
+- New `demand_system/crossprice_loglog` plugin: fits ONE log-log equation for a
+  target PPG against EVERY PPG's log price (+ the target's controls), so the
+  own-price coefficient is the own elasticity and the others are cross-price
+  (cannibalisation) elasticities. Takes the FULL multi-PPG frame (pivots to
+  wide internally, chronological split). statsmodels OLS, no new dep.
+  Capabilities `SCALAR_ELASTICITY | CROSS_PRICE_MATRIX | NEEDS_PANEL`; not
+  price-sweepable so it stays out of `PREDICTABLE_MODELS` (downstream skips).
+- `core/agents/modeling.py`: `default_problem_type="demand_system"` runs
+  `_system_one_ppg_routed` per PPG over the full frame and writes a new
+  `cross_price_matrix.json` (ppgs, own elasticities, full N×N matrix). Mirrors
+  the FORECAST path's structure.
+- Router DEMAND_SYSTEM / CROSS_PRICE preferences lead with `crossprice_loglog`.
+
+**Tests**
+- `test_library_demand_system.py`: recovers own (<0) + substitute cross (>0) +
+  independent (~0) signs; requires >= 2 PPGs; the demand-system run writes
+  `cross_price_matrix.json`. Full unit suite: 320 passed, 5 skipped.
+
+**Verification**
+- Synthetic 3-PPG system (P2 substitutes for P1): own elasticities recovered
+  (-1.50/-2.00/-1.00), cross P1←P2 = +0.62 (truth +0.6), P1←P3 ≈ 0.
+
+### Phase 8 — Still deferred
+- **Panel FE/RE, IV/2SLS** (linearmodels): need a per-PPG-across-stores panel
+  loop (only meaningful at `store_*` grains) + instrument columns for IV.
+- **Structural demand systems** (logit/nested/AIDS/QUAIDS/BLP via pyblp) and
+  **deep sequence models** (DeepAR/LSTM/TFT via torch): heavy/fragile optional
+  deps. `ModelResult.cross_price` / the FORECAST path already accommodate them.
   logit/AIDS/BLP, VARX, GNN, hierarchical Bayes via pymc): need a multi-PPG /
   multi-store frame passed to the plugin, not a single PPG slice.
 - **Deep sequence models** (DeepAR/LSTM/GRU/TFT/N-BEATS): forecast-path models
