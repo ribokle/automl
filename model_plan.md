@@ -109,6 +109,51 @@ the next candidate when fit is poor.
 - **Probabilistic / uncertainty** out-of-the-box: Bayesian, GP, DeepAR, quantile.
 - **Endogeneity-corrected** (cleanest causal elasticity): IV/2SLS, DML, BLP.
 
+---
+
+## Implementation status & how to add a model
+
+Run `uv run automl models` to list every registered plugin with its family,
+problem types, availability, and required packages (`--available-only` to hide
+ones whose optional dependency isn't installed).
+
+**Implemented (per-cell):** classical (`loglog_ols`, `semilog_ols`),
+regularized (`ridge`, `lasso`, `elasticnet`), robust/quantile (`huber`,
+`ransac`, `theil_sen`, `quantile`), trees (`lightgbm`, `random_forest`,
+`extra_trees`, `xgboost`*, `catboost`*), ML/nonparam (`bayesian_ridge`,
+`gaussian_process`, `svr`, `knn`, `gam`*), causal (`double_ml`), time-series
+(`arimax`, `sarimax`, `state_space`, `ets`, `holt_winters`, `prophet`*,
+`tbats`*). `*` = optional dependency, installed via a `models-*` extra.
+
+**Not yet wired (need a multi-entity loop, not a single PPG slice):** panel
+FE/RE, IV/2SLS, demand systems (logit/AIDS/BLP), VARX, GNN, hierarchical Bayes
+(pymc), deep sequence models (DeepAR/LSTM/TFT — forecast path + torch).
+
+### Adding a plugin
+1. Create `core/models/library/<family>/<key>.py`. Subclass `BaseModelPlugin`,
+   set `key`, `family`, `problem_types`, `capabilities`, `required_packages`,
+   and implement `fit(frame, ctx) -> ModelResult`. Decorate with `@register`.
+2. **Import heavy deps inside `fit`** (never at module top) so the library
+   imports without them; `required_packages` drives the `is_available()` probe
+   and the router drops unavailable models automatically.
+3. A model module may import only `library.base`, `library.registry`,
+   `models.result`, and shared `library._*` / `models.metrics` helpers — **never
+   a sibling model module** (`tests/unit/test_library_no_cross_import.py`
+   enforces this via AST).
+4. Hyperparameters: return defaults from `default_hparams()` and read merged
+   values via `self.resolve_hparams(ctx)` — no literals in `fit`. Per-family
+   overrides live in `Settings.model_hparams`.
+5. Register the module in its family `__init__`. Light (base-dep) families are
+   imported eagerly in `core/models/library/__init__.py`; optional-dep families
+   are imported defensively there.
+6. Downstream compatibility: a linear-coefficient model (emits `coefficients`
+   with `const`) should be added to `predictor.LINEAR_COEFF_MODELS`; a
+   refit-scored model (trees/GP/SVR/kNN/GAM) to `predictor._REFIT_FACTORIES`
+   (and thus `REFIT_MODELS`). Forecast-only models stay out of
+   `PREDICTABLE_MODELS` and feed the FORECAST path's `forecasts.json`.
+7. Add a unit test asserting sign recovery on synthetic and graceful skip when
+   an optional dep is absent (`pytest.skip` guarded by `is_available()`).
+
 ## Sources
 - [Mastering Price Elasticity Models for CPG (ElasticNet, RF, GBM)](https://medium.com/@quation755/mastering-price-elasticity-models-for-cpg-beyond-basics-eadfefbeb45d)
 - [Modeling Price Elasticity of Demand — Strategic Brief (Revology/Kakas)](https://arminkakas.medium.com/modeling-price-elasticity-of-demand-a-strategic-brief-for-pricing-leaders-3fd7c109ad60)

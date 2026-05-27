@@ -92,7 +92,7 @@ class DoubleMLPlugin(BaseModelPlugin):
         if usable:
             ols = LinearRegression().fit(X, adj)
             coefs["const"] = float(ols.intercept_)
-            coefs.update({c: float(b) for c, b in zip(usable, ols.coef_)})
+            coefs.update({c: float(b) for c, b in zip(usable, ols.coef_, strict=False)})
         else:
             coefs["const"] = float(adj.mean())
         coefs[LOG_PRICE] = theta

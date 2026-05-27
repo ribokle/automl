@@ -9,7 +9,8 @@ special-casing.
 """
 from __future__ import annotations
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -55,7 +56,7 @@ def fit_sklearn_loglog(
 
     own_beta = float(coef[0])
     coefs: dict[str, float] = {"const": intercept}
-    coefs.update({c: float(b) for c, b in zip(cols, coef)})
+    coefs.update({c: float(b) for c, b in zip(cols, coef, strict=False)})
 
     train_pred = estimator.predict(X)
     diagnostics: dict[str, Any] = {

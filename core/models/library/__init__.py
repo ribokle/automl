@@ -9,8 +9,6 @@ the rest.
 """
 from __future__ import annotations
 
-from core.models.library import registry
-
 # Light families — always importable (deps are in the base install). Optional
 # third-party deps inside these modules are imported lazily in ``fit``, so
 # registering them never triggers a heavy import.
@@ -18,6 +16,7 @@ from core.models.library import (  # noqa: F401,E402
     causal,
     classical,
     ml_nonparam,
+    registry,
     regularized,
     robust_quantile,
     timeseries,

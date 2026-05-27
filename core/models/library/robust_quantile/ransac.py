@@ -1,8 +1,6 @@
 """RANSAC robust log-log plugin — consensus fit that ignores outlier weeks."""
 from __future__ import annotations
 
-from typing import Any
-
 import pandas as pd
 
 from core.models.library._sklearn_linear import fit_sklearn_loglog

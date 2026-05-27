@@ -99,6 +99,37 @@ def baseline_create(
 
 
 @app.command()
+def models(
+    available_only: bool = typer.Option(
+        False, "--available-only", help="Show only models whose dependencies are importable."
+    ),
+) -> None:
+    """List the demand-model library: key, family, problem types, availability."""
+    import core.models.library  # noqa: F401 — populate the registry
+    from core.models.library import registry
+
+    rows = registry.catalog()
+    if available_only:
+        rows = [r for r in rows if r["available"]]
+
+    table = Table(title=f"Model library ({len(rows)} models)")
+    table.add_column("key")
+    table.add_column("family")
+    table.add_column("problem types")
+    table.add_column("available")
+    table.add_column("requires")
+    for r in rows:
+        table.add_row(
+            str(r["key"]),
+            str(r["family"]),
+            ", ".join(r["problem_types"]),  # type: ignore[arg-type]
+            "[green]yes[/green]" if r["available"] else "[yellow]no[/yellow]",
+            ", ".join(r["required_packages"]) or "-",  # type: ignore[arg-type]
+        )
+    console.print(table)
+
+
+@app.command()
 def seed() -> None:
     """Regenerate the synthetic dataset."""
     from synthetic.generator import write_panel

@@ -12,13 +12,13 @@ working unchanged, returning ``None`` when no scalar elasticity is available
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import Enum, Flag, auto
+from enum import Flag, StrEnum, auto
 from typing import Any
 
 from core.models.base import ElasticityFit
 
 
-class ProblemType(str, Enum):
+class ProblemType(StrEnum):
     """The business question a model is being asked to answer."""
 
     OWN_ELASTICITY = "own_elasticity"

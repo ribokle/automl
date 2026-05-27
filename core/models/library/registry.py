@@ -39,6 +39,27 @@ def all_plugins() -> list[BaseModelPlugin]:
     return list(_REGISTRY.values())
 
 
+def catalog() -> list[dict[str, object]]:
+    """Introspect every registered plugin for display / tooling.
+
+    One row per model: key, family, the problem types it answers, whether its
+    dependencies are importable, and what those dependencies are.
+    """
+    rows: list[dict[str, object]] = []
+    for key in all_keys():
+        plugin = _REGISTRY[key]
+        rows.append(
+            {
+                "key": key,
+                "family": plugin.family,
+                "problem_types": sorted(p.value for p in plugin.problem_types),
+                "available": plugin.is_available(),
+                "required_packages": list(plugin.required_packages),
+            }
+        )
+    return rows
+
+
 def available(
     keys: list[str] | None = None,
     *,

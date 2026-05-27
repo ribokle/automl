@@ -7,7 +7,8 @@ NOT a model module (registers nothing), so model modules may import it.
 """
 from __future__ import annotations
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -67,7 +68,7 @@ def fit_tree_elasticity(
     importances = getattr(estimator, "feature_importances_", None)
     if importances is not None:
         diagnostics["feature_importances"] = {
-            c: float(v) for c, v in zip(cols, importances)
+            c: float(v) for c, v in zip(cols, importances, strict=False)
         }
 
     if test is not None and len(test):

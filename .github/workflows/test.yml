@@ -25,6 +25,29 @@ jobs:
       - name: Unit tests
         run: uv run --with pytest pytest tests/unit/ -q -m "not slow" --tb=short
 
+  optional-extras:
+    name: Optional model extras (graceful-dep path)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      # Installs xgboost + catboost so the optional tree plugins flip from
+      # "registered but unavailable" to a real fit — exercising both sides of
+      # the graceful-dependency contract that the default job cannot.
+      - name: Install with model extras
+        run: uv sync --dev --extra models-trees
+
+      - name: Optional-extra model tests
+        run: >
+          uv run --with pytest pytest
+          tests/unit/test_library_trees.py
+          tests/unit/test_library_hardening.py
+          -q --tb=short
+
   node:
     name: Next.js type-check & build
     runs-on: ubuntu-latest

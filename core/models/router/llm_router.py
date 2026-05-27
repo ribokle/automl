@@ -13,9 +13,9 @@ import json
 from core.config import RouterSettings, get_settings
 from core.models.library import registry
 from core.models.library.diagnostics import DataProfile
+from core.models.result import ProblemType
 from core.models.router.base import LEGACY_TAIL
 from core.models.router.rules import DeterministicRouter
-from core.models.result import ProblemType
 
 _SYSTEM = (
     "You are a model-selection router for retail price/promo demand modelling. "

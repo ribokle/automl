@@ -1715,6 +1715,23 @@ dedicated FORECAST path, distinct from the price-optimisation flow.
   elasticity under price-control confounding; predictor-compatible). Full unit
   suite: 313 passed, 5 skipped.
 
+### Phase 8f — Hardening ✅
+**Status:** complete.
+- `core/models/library/registry.py:catalog()` + `automl models` CLI command
+  (Rich table; `--available-only`) introspect the registry (key / family /
+  problem types / availability / required packages).
+- CI: new `optional-extras` job in `.github/workflows/test.yml` runs
+  `uv sync --dev --extra models-trees` then the trees + hardening tests, so the
+  *real* xgboost/catboost path is exercised in CI (the default job only sees
+  the graceful-skip side). Validated locally: with the extra installed, both
+  flip to available and the trees tests run real fits (8 passed, 0 skipped).
+- `tests/unit/test_library_hardening.py`: base-deps registry guarantees, the
+  catalog shape, the registered-but-unavailable contract, and a dry-run
+  router-modeling end-to-end.
+- `model_plan.md`: implementation-status section + a "how to add a plugin"
+  guide (lazy deps, no-cross-import rule, hparams, downstream wiring).
+- All new code ruff-clean (pre-existing repo lint debt untouched).
+
 ### Phase 8 — Still deferred (need a multi-entity path)
 - **Multi-entity** (panel FE/RE, IV/2SLS, demand systems
   logit/AIDS/BLP, VARX, GNN, hierarchical Bayes via pymc): need a multi-PPG /

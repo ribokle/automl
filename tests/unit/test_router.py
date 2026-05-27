@@ -6,9 +6,9 @@ import json
 import core.models.library  # noqa: F401 — ensure plugins are registered
 from core.config import RouterSettings
 from core.models.library.diagnostics import DataProfile
+from core.models.result import ProblemType
 from core.models.router.llm_router import LLMRouter
 from core.models.router.rules import DeterministicRouter
-from core.models.result import ProblemType
 
 
 def _profile(**overrides) -> DataProfile:
