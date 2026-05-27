@@ -38,6 +38,8 @@ class DeterministicRouter:
             return ["baseline_uplift", "uplift_causal_tree", "lightgbm"]
         if problem == ProblemType.DEMAND_SYSTEM:
             return ["crossprice_loglog", "aids", "blp", "nested_logit"]
+        if problem == ProblemType.PANEL:
+            return ["fixed_effects", "random_effects"]
         return list(LEGACY_TAIL)
 
     def select(

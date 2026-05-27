@@ -402,7 +402,6 @@ models-deep = [
 ]
 models-econometric = [
     { name = "linearmodels" },
-    { name = "pyblp" },
 ]
 models-ml = [
     { name = "pygam", version = "0.9.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.13'" },
@@ -442,7 +441,6 @@ requires-dist = [
     { name = "pmdarima", marker = "extra == 'models-ts'", specifier = ">=2.0" },
     { name = "prophet", marker = "extra == 'models-ts'", specifier = ">=1.1" },
     { name = "pulp", specifier = ">=2.8" },
-    { name = "pyblp", marker = "extra == 'models-econometric'", specifier = ">=1.1" },
     { name = "pydantic", specifier = ">=2.7" },
     { name = "pydantic-settings", specifier = ">=2.4" },
     { name = "pygam", marker = "extra == 'models-ml'", specifier = ">=0.9" },
@@ -3505,23 +3503,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/58/a8/6e63330798761e0c903091786681651168fda7365f029b8b5d66160861f2/pulp-3.3.1.tar.gz", hash = "sha256:a9ec237a56981b11c2096e8ba6bb72006833410ba5b400aa257426f85df5e293", size = 16304830, upload-time = "2026-05-05T12:25:43.123Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/9f/23/5a77fe2b50d962213338ae0fdd9832960186ebc423388fff1a56680e5114/pulp-3.3.1-py3-none-any.whl", hash = "sha256:45aa73db3368eb13b156564e092784c8fa0c1feefa64c2afb0410d9dc0bb5cd9", size = 16390866, upload-time = "2026-05-05T12:25:39.83Z" },
-]
-
-[[package]]
-name = "pyblp"
-version = "1.2.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "numpy" },
-    { name = "patsy" },
-    { name = "pyhdfe" },
-    { name = "scipy", version = "1.16.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.13'" },
-    { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.13'" },
-    { name = "sympy" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/b9/c0/11284d555918fc9d62711ae714571f65b7f83c65f49ca367382b46f58ace/pyblp-1.2.0.tar.gz", hash = "sha256:41e16249b1ae5c0037922f4f1eb478a2a7600ca1ed96215de1db41c3c6fb8520", size = 2350157, upload-time = "2026-04-07T16:25:55.604Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/24/58/cf5e6b9f62dbca297638da09eab7765f7ca3cea52ce50ec8d0ef6852e0ba/pyblp-1.2.0-py3-none-any.whl", hash = "sha256:4cbf7d64445216da2ec2ce38407b42cf287195991a22f355ff92b0ed0fed35cd", size = 2054707, upload-time = "2026-04-07T16:25:53.531Z" },
 ]
 
 [[package]]

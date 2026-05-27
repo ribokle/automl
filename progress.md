@@ -1758,9 +1758,37 @@ dedicated FORECAST path, distinct from the price-optimisation flow.
 - Synthetic 3-PPG system (P2 substitutes for P1): own elasticities recovered
   (-1.50/-2.00/-1.00), cross P1←P2 = +0.62 (truth +0.6), P1←P3 ≈ 0.
 
-### Phase 8 — Still deferred
-- **Panel FE/RE, IV/2SLS** (linearmodels): need a per-PPG-across-stores panel
-  loop (only meaningful at `store_*` grains) + instrument columns for IV.
+### Phase 8h — Panel path: fixed / random effects ✅
+**Status:** complete. Second multi-entity family + a PANEL problem path.
+
+**Backend**
+- New `panel/fixed_effects` + `panel/random_effects` plugins (optional dep
+  `linearmodels`): pool ONE PPG across its entities (stores) — entity =
+  `grain_unit`, time = `week_start` — and report the within-entity own-price
+  elasticity. Shared `_panel_common` reshapes the target PPG to a (entity, time)
+  panel (coercing the time index from CSV strings). `NEEDS_PANEL`; not
+  price-sweepable so out of `PREDICTABLE_MODELS`.
+- `ProblemType.PANEL` + a PANEL agent branch: at store grains it bypasses the
+  per-(PPG, store) cell split, fits one panel model per PPG over all its stores,
+  and writes `panel_elasticity.json`. Router PANEL preference = `[fixed_effects,
+  random_effects]`.
+- `pyproject.toml`: `models-econometric` slimmed to `linearmodels` (dropped the
+  fragile `pyblp`); new `econometric-extras` CI job installs it and runs the
+  panel tests so the real linearmodels path is covered.
+
+**Tests**
+- `test_library_panel.py` (FE/RE recover ≈ truth within-entity elasticity on a
+  6-store synthetic panel; need ≥2 entities; the panel run writes
+  `panel_elasticity.json`). Skips cleanly without linearmodels. Full unit suite:
+  321 passed, 9 skipped (optional deps); with linearmodels: panel tests pass.
+
+**Verification**
+- Synthetic 6-store panel with store fixed effects: FE & RE both recover -1.702
+  (truth -1.7); a 2-PPG store-grain run recovers -1.70 / -2.30.
+
+### Phase 8 — Still deferred (heaviest / most fragile)
+- **IV/2SLS** (linearmodels): needs instrument columns (cost shifters) not in
+  the current feature set — a data-prep change, not just a model.
 - **Structural demand systems** (logit/nested/AIDS/QUAIDS/BLP via pyblp) and
   **deep sequence models** (DeepAR/LSTM/TFT via torch): heavy/fragile optional
   deps. `ModelResult.cross_price` / the FORECAST path already accommodate them.

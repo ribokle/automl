@@ -87,7 +87,7 @@ class RouterSettings(BaseModel):
 
     mode: Literal["auto", "llm", "rules"] = "auto"
     default_problem_type: Literal[
-        "own_elasticity", "cross_price", "forecast", "promo_uplift", "demand_system"
+        "own_elasticity", "cross_price", "forecast", "promo_uplift", "demand_system", "panel"
     ] = "own_elasticity"
     small_n_threshold: int = 60
     panel_min_entities: int = 8

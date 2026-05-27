@@ -394,6 +394,82 @@ def _system_one_ppg_routed(
     return row, cross_entry
 
 
+def _panel_one_ppg_routed(
+    ppg_id: str,
+    ppg_slice: pd.DataFrame,
+    controls: list[str],
+    candidates: list[str],
+    *,
+    grain: str,
+    hparams: dict[str, dict],
+    rng_seed: int,
+) -> tuple[dict, dict | None]:
+    """PANEL variant: fit one panel model for the PPG pooled across its
+    entities (stores), returning (modeling row, per-PPG panel entry)."""
+    key = next(
+        (k for k in candidates if model_registry.has(k) and model_registry.get(k).is_available()),
+        None,
+    )
+    base_router = {"problem_type": ProblemType.PANEL.value, "candidates": candidates}
+    if key is None:
+        return {
+            "ppg_id": ppg_id,
+            "winner_model": "no_panel",
+            "sign_retry_fired": False,
+            "attempts": [],
+            "winner": None,
+            "n_train": 0,
+            "n_test": 0,
+            "skip_reason": "router_no_panel",
+            "router": {**base_router, "errors": {}},
+        }, None
+
+    ctx = FitContext(
+        ppg_id=ppg_id,
+        controls=controls,
+        test=None,
+        grain=grain,
+        problem_type=ProblemType.PANEL,
+        hparams=hparams.get(key, {}),
+        rng_seed=rng_seed,
+    )
+    try:
+        result = model_registry.get(key).fit(ppg_slice, ctx)
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "ppg_id": ppg_id,
+            "winner_model": "no_panel",
+            "sign_retry_fired": False,
+            "attempts": [],
+            "winner": None,
+            "n_train": 0,
+            "n_test": 0,
+            "skip_reason": "panel_error",
+            "router": {**base_router, "errors": {key: f"{type(exc).__name__}: {exc}"}},
+        }, None
+
+    ef = to_elasticity_fit(result)
+    row: dict = {
+        "ppg_id": ppg_id,
+        "winner_model": key,
+        "sign_retry_fired": False,
+        "attempts": [ef.to_dict()] if ef else [],
+        "winner": ef.to_dict() if ef else None,
+        "n_train": int(result.n_obs),
+        "n_test": 0,
+        "router": {**base_router, "errors": {}},
+    }
+    entry = {
+        "ppg_id": ppg_id,
+        "model": key,
+        "own_elasticity": result.own_elasticity,
+        "std_err": result.std_err,
+        "n_entities": result.diagnostics.get("n_entities"),
+        "r_squared": result.r_squared,
+    }
+    return row, entry
+
+
 class ModelingAgent(Agent):
     name = "modeling"
 
@@ -409,10 +485,12 @@ class ModelingAgent(Agent):
         problem = ProblemType(rtr.default_problem_type)
         is_forecast = routed and problem == ProblemType.FORECAST
         is_demand_system = routed and problem == ProblemType.DEMAND_SYSTEM
+        is_panel = routed and problem == ProblemType.PANEL
         eff_enabled = _effective_enabled(lib) if routed else set()
         router_decisions: list[dict] = []
         forecasts: list[dict] = []
         cross_price_rows: list[dict] = []
+        panel_rows: list[dict] = []
 
         feats = await asyncio.to_thread(_load_features, run_dir)
         eligible = _load_eligible_ppgs(run_dir)
@@ -473,6 +551,49 @@ class ModelingAgent(Agent):
             ppg_slice = feats[feats["ppg_id"] == ppg_id]
             if ppg_slice.empty:
                 continue
+
+            # PANEL mode fits ONE model per PPG pooled across its entities
+            # (stores), so it bypasses the per-(PPG, store) cell split.
+            if is_panel:
+                prof = data_profile(
+                    ppg_slice, controls, grain=grain_str,
+                    seasonality_min_length=rtr.seasonality_min_length,
+                )
+                candidates, router_used = self._route(
+                    result, problem, prof, eff_enabled, dry_run, rtr
+                )
+                router_decisions.append(
+                    {
+                        "cell_id": ppg_id,
+                        "ppg_id": ppg_id,
+                        "grain_unit": None,
+                        "router": router_used,
+                        "problem_type": problem.value,
+                        "candidates": candidates,
+                        "profile": prof.to_dict(),
+                    }
+                )
+                row, p_entry = await asyncio.to_thread(
+                    _panel_one_ppg_routed,
+                    ppg_id,
+                    ppg_slice,
+                    controls,
+                    candidates,
+                    grain=grain_str,
+                    hparams=hparams,
+                    rng_seed=lib.rng_seed,
+                )
+                row["grain_unit"] = None
+                per_ppg.append(row)
+                if p_entry is not None:
+                    panel_rows.append(p_entry)
+                await self.emit(
+                    run,
+                    "tool_called",
+                    {"tool": "fit_panel", "ppg_id": ppg_id, "winner": row["winner_model"]},
+                )
+                continue
+
             if has_grain_unit:
                 cells = [(unit, sub) for unit, sub in ppg_slice.groupby("grain_unit")]
             else:
@@ -718,6 +839,24 @@ class ModelingAgent(Agent):
                     mime="application/json",
                     agent=self.name,
                     name=cross_path.name,
+                )
+            )
+
+        if is_panel:
+            panel_path = run_dir / "panel_elasticity.json"
+            panel_path.write_text(
+                json.dumps(
+                    {"problem_type": problem.value, "n_ppg": len(panel_rows), "per_ppg": panel_rows},
+                    indent=2,
+                    default=float,
+                )
+            )
+            result.artifacts.append(
+                ArtifactRef(
+                    path=str(panel_path),
+                    mime="application/json",
+                    agent=self.name,
+                    name=panel_path.name,
                 )
             )
 

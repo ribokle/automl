@@ -26,6 +26,7 @@ class ProblemType(StrEnum):
     FORECAST = "forecast"
     PROMO_UPLIFT = "promo_uplift"
     DEMAND_SYSTEM = "demand_system"
+    PANEL = "panel"
 
 
 class Capability(Flag):
