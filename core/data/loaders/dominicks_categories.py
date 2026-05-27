@@ -26,7 +26,7 @@ class DominicksCategory:
 CATEGORIES: tuple[DominicksCategory, ...] = (
     DominicksCategory("wana", "analgesics",          "Analgesics",          "analgesics"),
     DominicksCategory("wbat", "bath_soap",           "Bath soap",           "bath_soap"),
-    DominicksCategory("wbnt", "bathroom_tissue",     "Bathroom tissue",     "paper_products"),
+    DominicksCategory("wtti", "bathroom_tissue",     "Bathroom tissue",     "paper_products"),
     DominicksCategory("wber", "beer",                "Beer",                "beer"),
     DominicksCategory("wbjc", "bottled_juice",       "Bottled juice",       "bottled_juice"),
     DominicksCategory("wcer", "cereal",              "Cereal",              "cereal"),
@@ -46,11 +46,16 @@ CATEGORIES: tuple[DominicksCategory, ...] = (
     DominicksCategory("wsdr", "soft_drinks",         "Soft drinks",         "soft_drinks"),
     DominicksCategory("wsna", "snack_crackers",      "Snack crackers",      "snack_crackers"),
     DominicksCategory("wsoa", "soaps",               "Soaps",               "laundry_soap"),
-    DominicksCategory("wsou", "canned_soup",         "Canned soup",         "canned_soup"),
+    DominicksCategory("wcso", "canned_soup",         "Canned soup",         "canned_soup"),
     DominicksCategory("wtbr", "toothbrushes",        "Toothbrushes",        "toothbrushes"),
     DominicksCategory("wtna", "tuna",                "Tuna",                "tuna"),
     DominicksCategory("wtpa", "toothpaste",          "Toothpaste",          "toothpaste"),
     DominicksCategory("wyog", "yogurt",              "Yogurt",              "yogurt"),
+    # Three categories present in the Kilts archive but absent from Hoch (1995).
+    # Benchmark keys proxy to the closest available Bijmolt/Hoch entry.
+    DominicksCategory("wfec", "front_end_candies",  "Front-end candies",   "snacks"),
+    DominicksCategory("wgro", "grooming_products",  "Grooming products",   "bath_soap"),
+    DominicksCategory("wsha", "shampoos",           "Shampoos",            "bath_soap"),
 )
 
 

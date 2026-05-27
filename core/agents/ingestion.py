@@ -22,7 +22,7 @@ from core.data.charts import coverage_grid, quality_results, weekly_trend
 from core.data.dbt_runner import run_dbt_build
 from core.data.ge_runner import run_ge_checks
 from core.data.ingestion_report import IngestionReport
-from core.data.io import load_csv_to_duckdb
+from core.data.io import load_csv_to_duckdb, load_parquet_dir_to_duckdb
 from core.data.tools import detect_outliers, profile_table, sample_rows
 from core.orchestrator.state import AgentResult, AgentStatus, ArtifactRef, RunState
 
@@ -81,12 +81,16 @@ class IngestionAgent(Agent):
     name = "ingestion"
 
     async def _execute(self, run: RunState, result: AgentResult) -> None:
-        csv_path = Path(run.data_path)
+        data_path = Path(run.data_path)
         duckdb_path = Path(run.duckdb_path)
         run_dir = Path(run.run_dir)
 
-        row_count = await asyncio.to_thread(load_csv_to_duckdb, csv_path, duckdb_path)
-        await self.emit(run, "tool_called", {"tool": "load_csv_to_duckdb", "rows": row_count})
+        if data_path.is_dir():
+            row_count = await asyncio.to_thread(load_parquet_dir_to_duckdb, data_path, duckdb_path)
+            await self.emit(run, "tool_called", {"tool": "load_parquet_dir_to_duckdb", "rows": row_count})
+        else:
+            row_count = await asyncio.to_thread(load_csv_to_duckdb, data_path, duckdb_path)
+            await self.emit(run, "tool_called", {"tool": "load_csv_to_duckdb", "rows": row_count})
 
         dbt_results = await asyncio.to_thread(run_dbt_build, duckdb_path)
         await self.emit(run, "tool_called", {"tool": "dbt_build", "checks": len(dbt_results)})

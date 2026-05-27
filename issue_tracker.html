@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Issue Tracker — AutoML</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f5f6fa; color: #1a1a2e; }
+    header { background: #16213e; color: #e2e8f0; padding: 1.25rem 2rem; display: flex; align-items: center; gap: 1rem; }
+    header h1 { font-size: 1.25rem; font-weight: 600; }
+    header span.subtitle { font-size: 0.8rem; color: #94a3b8; }
+    main { max-width: 960px; margin: 2rem auto; padding: 0 1rem; }
+    table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+    thead { background: #1e293b; color: #e2e8f0; }
+    th { padding: .75rem 1rem; text-align: left; font-size: .75rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; white-space: nowrap; }
+    td { padding: .75rem 1rem; font-size: .875rem; border-bottom: 1px solid #f1f5f9; vertical-align: top; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: #f8fafc; }
+    .badge { display: inline-block; padding: .2rem .55rem; border-radius: 9999px; font-size: .7rem; font-weight: 600; white-space: nowrap; }
+    .badge.open   { background: #fee2e2; color: #991b1b; }
+    .badge.in-progress { background: #fef9c3; color: #854d0e; }
+    .badge.closed { background: #dcfce7; color: #166534; }
+    .badge.p0 { background: #fca5a5; color: #7f1d1d; }
+    .badge.p1 { background: #fdba74; color: #7c2d12; }
+    .badge.p2 { background: #fde68a; color: #78350f; }
+    .badge.p3 { background: #d1fae5; color: #064e3b; }
+    .id { font-family: monospace; font-size: .8rem; color: #475569; }
+    .title { font-weight: 500; }
+    .desc { color: #64748b; font-size: .8rem; margin-top: .3rem; line-height: 1.5; }
+    pre.stack { background: #f1f5f9; border-left: 3px solid #e11d48; padding: .5rem .75rem; font-size: .72rem; font-family: monospace; margin-top: .4rem; white-space: pre-wrap; word-break: break-word; color: #334155; border-radius: 0 4px 4px 0; }
+    .agent-tag { font-size: .7rem; background: #e0f2fe; color: #0369a1; padding: .15rem .4rem; border-radius: 4px; font-weight: 500; }
+    .meta { color: #94a3b8; font-size: .75rem; white-space: nowrap; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Issue Tracker</h1>
+    <span class="subtitle">AutoML · Agentic Price &amp; Promo Optimisation</span>
+  </header>
+  <main>
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Priority</th>
+          <th>Status</th>
+          <th>Agent / Component</th>
+          <th>Title &amp; Description</th>
+          <th>Opened</th>
+        </tr>
+      </thead>
+      <tbody>
+
+        <tr>
+          <td class="id">#001</td>
+          <td><span class="badge p0">P0</span></td>
+          <td><span class="badge open">Open</span></td>
+          <td><span class="agent-tag">advanced_eda</span></td>
+          <td>
+            <div class="title">advanced_eda crashes with OOM when run on full Dominick's panel (99M rows)</div>
+            <div class="desc">
+              <strong>Symptom:</strong> The <code>advanced_eda</code> agent fails with
+              <code>cannot allocate memory for array</code> and exits without producing any artifacts.
+              All downstream agents (feature_engineering → insights) are left in <em>pending</em> state,
+              blocking the full pipeline run.<br><br>
+
+              <strong>Root cause:</strong>
+              <code>_read_raw_panel()</code> in <code>core/agents/advanced_eda.py:71</code> executes
+              <code>SELECT * FROM main.panel</code> and materialises the entire 99M-row result into a
+              single <code>pd.DataFrame</code> in memory (~12–15 GB at ~150 bytes/row).
+              The machine cannot allocate this. The call succeeds on the synthetic dataset
+              (~20k rows) and on single-category Dominick's runs, but fails when all 29 categories
+              are loaded (98,884,285 rows across 17,928 SKUs / 93 stores / 398 weeks).<br><br>
+
+              <strong>Confirmed timeline (run <code>448e47cac13d</code>):</strong>
+              <ul style="margin:.4rem 0 0 1.2rem; color:#475569; font-size:.8rem;">
+                <li><code>11:56:10</code> — agent started</li>
+                <li><code>11:56:16</code> — <code>ppg_week_aggregate</code> succeeded (456,251 rows — fine)</li>
+                <li><code>12:00:11</code> — OOM crash, ~4 min after start (during <code>_read_raw_panel</code>)</li>
+              </ul>
+            </div>
+            <pre class="stack">Error event (events.jsonl):
+{"type": "agent_failed", "agent": "advanced_eda", "error": "cannot allocate memory for array"}
+
+Likely allocation site:
+  core/agents/advanced_eda.py:139  raw = await asyncio.to_thread(_read_raw_panel, duckdb_path)
+  core/agents/advanced_eda.py:75   df = con.execute("SELECT ... FROM main.panel").df()
+  → pandas materialises 99M rows × 20 columns into RAM</pre>
+            <div class="desc" style="margin-top:.5rem;">
+              <strong>Consumers of <code>raw</code> that drive the full-table load:</strong>
+              <code>store_variability(raw)</code>,
+              <code>pareto_abc(raw, panel)</code>,
+              <code>holiday_lift_table(raw)</code>,
+              <code>cardinality_report(raw, [...])</code>,
+              <code>_ppg_category_lookup(raw)</code>.<br><br>
+
+              <strong>Suggested fix directions:</strong>
+              <ol style="margin:.4rem 0 0 1.2rem; color:#475569; font-size:.8rem;">
+                <li>Replace <code>_read_raw_panel</code> with per-function DuckDB queries — push aggregations into SQL so only small result sets cross the DuckDB→pandas boundary.</li>
+                <li>Or stream a sampled / store-aggregated slice:
+                  <code>SELECT … FROM main.panel USING SAMPLE 10%</code> (fast, approximate).</li>
+                <li>Or cap the raw load to the top-K PPGs by revenue (already computed in <code>top_ppgs</code>) so the WHERE clause prunes to a manageable slice before materialisation.</li>
+              </ol>
+
+              <strong>Affected files:</strong>
+              <code>core/agents/advanced_eda.py</code>,
+              <code>core/features/advanced_eda.py</code> (functions that accept a full raw DataFrame).
+            </div>
+          </td>
+          <td class="meta">2026-05-27</td>
+        </tr>
+
+      </tbody>
+    </table>
+  </main>
+</body>
+</html>

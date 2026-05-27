@@ -20,7 +20,7 @@ console = Console()
 
 @app.command()
 def run(
-    data: Path = typer.Option(Path("data/synthetic.csv"), help="Input CSV path"),
+    data: Path = typer.Option(Path("data/synthetic.csv"), help="Input panel: CSV file or partitioned-Parquet directory"),
     out: Path = typer.Option(Path("runs"), help="Base directory for run artifacts"),
     no_gates: bool = typer.Option(True, "--no-gates/--with-gates", help="Disable approval gates (default: disabled)"),
     agent_mode: bool = typer.Option(
@@ -41,7 +41,7 @@ def run(
 ) -> None:
     """Execute the full agentic pipeline end-to-end."""
     if not data.exists():
-        console.print(f"[red]Data file not found: {data}[/red]")
+        console.print(f"[red]Data path not found: {data}[/red]")
         raise typer.Exit(code=1)
 
     from core.config import ModellingGrain
@@ -114,7 +114,10 @@ def prepare_dominicks(
         Path("data/dominicks-raw"),
         help="Directory containing the Dominick's category CSVs (any nesting).",
     ),
-    out: Path = typer.Option(Path("data/dominicks.csv"), help="Output panel CSV path."),
+    out: Path = typer.Option(
+        Path("data/dominicks"),
+        help="Output directory for per-category Parquet files (e.g. data/dominicks/).",
+    ),
     categories: str = typer.Option(
         "yogurt,beer",
         help="Comma-separated Dominick's category labels (e.g. yogurt,beer,soft_drinks). "
@@ -130,7 +133,11 @@ def prepare_dominicks(
         13, help="Trailing window (weeks) for non-promo base_price max."
     ),
 ) -> None:
-    """Convert a Dominick's archive into the canonical panel CSV.
+    """Convert a Dominick's archive into per-category Parquet files.
+
+    Writes one ``{category}.parquet`` (Snappy-compressed) per category under
+    the output directory. Pass the directory path to ``automl run --data``
+    to use it as the pipeline input.
 
     The Kilts data-use agreement forbids redistribution of the raw files —
     download them yourself (https://www.chicagobooth.edu/research/kilts) and
@@ -146,36 +153,40 @@ def prepare_dominicks(
     )
     store_list = [int(s) for s in stores.split(",") if s.strip()] or None
 
-    panel = build_dominicks_panel(
+    summary = build_dominicks_panel(
         raw_dir=raw_dir,
         categories=cat_list,
         stores=store_list,
         start_week=start_week,
         end_week=end_week or None,
         base_price_window=base_price_window,
+        out_dir=out,
     )
 
-    missing = [c for c in REQUIRED_COLUMNS if c not in panel.columns]
+    last_piece = summary["_last_piece"]
+    missing = [c for c in REQUIRED_COLUMNS if c not in last_piece.columns]
     if missing:
         console.print(f"[red]Output missing required columns: {missing}[/red]")
         raise typer.Exit(code=1)
 
-    out.parent.mkdir(parents=True, exist_ok=True)
-    panel.to_csv(out, index=False)
-
-    coverage = coverage_report(panel)
-    coverage_path = out.parent / f"{out.stem}.coverage.json"
+    coverage = coverage_report(last_piece)
+    coverage_path = out.parent / f"{out.name}.coverage.json"
     coverage_path.write_text(json.dumps(coverage, indent=2))
 
-    n_skus = panel["sku"].nunique()
-    n_stores = panel["store_id"].nunique()
-    n_weeks = panel["week_start"].nunique()
-    cats = ", ".join(sorted(panel["category"].dropna().unique().tolist()))
+    import duckdb as _duckdb
+    glob = str(out / "*.parquet")
+    n_skus, n_stores, n_weeks, dt_min, dt_max = _duckdb.execute(
+        "SELECT count(DISTINCT sku), count(DISTINCT store_id), count(DISTINCT week_start),"
+        "       min(week_start), max(week_start)"
+        f" FROM read_parquet('{glob}')"
+    ).fetchone()
+
+    cats = ", ".join(sorted(summary["categories"]))
     console.print(
-        f"[green]Wrote {len(panel):,} rows -> {out}[/green]\n"
+        f"[green]Wrote {summary['rows']:,} rows -> {out}[/green]\n"
         f"  SKUs: {n_skus} · Stores: {n_stores} · Weeks: {n_weeks}\n"
         f"  Categories: {cats}\n"
-        f"  Date range: {panel['week_start'].min()} -> {panel['week_start'].max()}"
+        f"  Date range: {dt_min} -> {dt_max}"
     )
     if coverage["constant_columns"] or coverage["all_null_columns"]:
         flat = coverage["constant_columns"] + coverage["all_null_columns"]

@@ -15,8 +15,11 @@ venv/
 /web/runs/
 data/*.csv
 !data/.gitkeep
-# Dominick's raw archive — Kilts data agreement forbids redistribution.
+# Dominick's raw archive and generated panel outputs — Kilts data agreement forbids redistribution.
 /data/dominicks-raw/
+/data/dominicks/
+/data/dominicks_test/
+data/*.coverage.json
 *.duckdb
 *.duckdb.wal
 
