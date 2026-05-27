@@ -50,7 +50,7 @@ models-ml = ["pygam>=0.9", "sklearn-contrib-py-earth>=0.1; python_version<'3.12'
 models-econometric = ["linearmodels>=6.0"]
 models-bayes = ["pymc>=5.10", "arviz>=0.17"]
 models-ts = ["prophet>=1.1", "tbats>=1.1", "pmdarima>=2.0"]
-models-deep = ["torch>=2.2", "pytorch-forecasting>=1.0"]
+models-deep = ["torch>=2.2"]
 
 [project.scripts]
 automl = "cli.run:app"

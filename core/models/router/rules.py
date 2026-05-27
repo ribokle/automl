@@ -32,8 +32,8 @@ class DeterministicRouter:
             return ["crossprice_loglog", "aids", "nested_logit"]
         if problem == ProblemType.FORECAST:
             if profile.seasonality_detected:
-                return ["sarimax", "holt_winters", "ets", "state_space", "prophet"]
-            return ["arimax", "ets", "state_space", "prophet"]
+                return ["sarimax", "holt_winters", "ets", "state_space", "prophet", "lstm", "gru"]
+            return ["arimax", "ets", "state_space", "prophet", "lstm", "gru"]
         if problem == ProblemType.PROMO_UPLIFT:
             return ["baseline_uplift", "uplift_causal_tree", "lightgbm"]
         if problem == ProblemType.DEMAND_SYSTEM:

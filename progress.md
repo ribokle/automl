@@ -1807,11 +1807,34 @@ than the confounded OLS slope. Full unit suite: 321 passed, 11 skipped.
 - Endogenous synthetic (unobserved confounder + `log_cost` instrument): naive
   OLS slope -0.80 (biased), IV recovers -1.45 (truth -1.5).
 
-### Phase 8 — Still deferred (heaviest / most fragile, intentionally opt-in)
-- **Structural demand systems** (logit/nested/AIDS/QUAIDS/BLP via pyblp) and
-  **deep sequence models** (DeepAR/LSTM/TFT via torch): heavy/fragile optional
-  deps that can't be validated in this environment. `ModelResult.cross_price` /
-  the FORECAST path already accommodate them when the deps are present.
+### Phase 8j — Deep sequence forecasters (opt-in torch) ✅
+**Status:** complete and validated against real CPU torch.
+- New `deep/lstm` + `deep/gru` plugins (optional dep `torch`): a small
+  recurrent net forecasts `log_units` from a sliding window of
+  `[log_units, log_price, *controls]`; the hold-out horizon is rolled forward
+  recursively using the KNOWN future exog + fed-back unit predictions.
+  Forecast-only (no elasticity), so out of `PREDICTABLE_MODELS`. Shared
+  `_torch_seq` helper imports torch lazily. Deterministic via `torch.manual_seed`.
+- Sit at the TAIL of the FORECAST preference (positions 5–7), so a default
+  forecast run (`max_candidates`=4) never invokes torch — opt-in by construction.
+- `models-deep` extra slimmed to `torch`; new `deep-extras` CI job installs CPU
+  torch (PyTorch CPU index) and runs the deep tests.
+
+**Tests** (`test_library_deep.py`, skip without torch): LSTM/GRU produce a
+horizon-correct `ForecastBlock`, are forecast-only, and report hold-out WAPE.
+Full unit suite: 322 passed, 13 skipped (optional deps).
+
+**Verification**
+- CPU torch installed locally: LSTM & GRU train and emit 28-step forecasts
+  (1.3k / 1.0k params) on a synthetic seasonal series.
+
+### Phase 8 — Remaining (intentionally not built)
+- **Structural demand systems** (logit/nested/AIDS/QUAIDS/BLP via `pyblp`):
+  `pyblp` is fragile to build and needs market-share/expenditure data the panel
+  doesn't model. `ModelResult.cross_price` already accommodates them if added.
+- **Heavyweight deep forecasters** (DeepAR/TFT/N-BEATS via
+  pytorch-forecasting/neuralforecast): the plain-torch LSTM/GRU cover the deep
+  family; these add framework weight without a different capability here.
   logit/AIDS/BLP, VARX, GNN, hierarchical Bayes via pymc): need a multi-PPG /
   multi-store frame passed to the plugin, not a single PPG slice.
 - **Deep sequence models** (DeepAR/LSTM/GRU/TFT/N-BEATS): forecast-path models
