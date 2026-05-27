@@ -14,6 +14,17 @@ from core.orchestrator.state import AgentResult, AgentStatus, RunState
 from core.report.builder import build_html, build_pdf
 
 
+@pytest.fixture(scope="session")
+def weasyprint_ok() -> bool:
+    """True only when WeasyPrint's native GTK/Pango/Cairo libs are available."""
+    try:
+        from weasyprint import HTML
+        HTML(string="<p>ok</p>").write_pdf()
+        return True
+    except Exception:
+        return False
+
+
 def _payload(**overrides):
     base = {
         "run_id": "run-test",
@@ -157,7 +168,9 @@ def test_build_html_signed_delta_filter() -> None:
     assert "+15.0%" in html
 
 
-def test_build_pdf_returns_bytes() -> None:
+def test_build_pdf_returns_bytes(weasyprint_ok: bool) -> None:
+    if not weasyprint_ok:
+        pytest.skip("WeasyPrint native libs not available on this platform")
     pdf = build_pdf(build_html(_payload()))
     assert isinstance(pdf, bytes)
     assert pdf.startswith(b"%PDF")
@@ -221,14 +234,17 @@ def _seed_upstream_artifacts(run_dir: Path) -> None:
     )
 
 
-def test_insights_agent_writes_artifacts(tmp_path: Path, monkeypatch) -> None:
+def test_insights_agent_writes_artifacts(tmp_path: Path, monkeypatch, weasyprint_ok: bool) -> None:
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     state = _new_run(tmp_path)
     _seed_upstream_artifacts(Path(state.run_dir))
     asyncio.run(InsightsAgent().run(state))
 
     run_dir = Path(state.run_dir)
-    for name in ("insights_summary.json", "cost_summary.json", "report.html", "report.pdf"):
+    required = ["insights_summary.json", "cost_summary.json", "report.html"]
+    if weasyprint_ok:
+        required.append("report.pdf")
+    for name in required:
         assert (run_dir / name).exists(), f"missing {name}"
 
     summary = json.loads((run_dir / "insights_summary.json").read_text())
@@ -241,13 +257,14 @@ def test_insights_agent_writes_artifacts(tmp_path: Path, monkeypatch) -> None:
     assert "per_agent" in cost and "totals" in cost
     assert any(a["agent"] == "insights" for a in cost["per_agent"])
 
-    pdf_bytes = (run_dir / "report.pdf").read_bytes()
-    assert pdf_bytes.startswith(b"%PDF")
+    if weasyprint_ok:
+        pdf_bytes = (run_dir / "report.pdf").read_bytes()
+        assert pdf_bytes.startswith(b"%PDF")
 
     outputs = state.agents["insights"].outputs
     assert outputs["n_ppgs"] == 1
     assert outputs["n_pass"] == 1
-    assert outputs["pdf"] is True
+    assert outputs["pdf"] is weasyprint_ok
 
 
 def test_insights_agent_dry_run_headline_used_when_no_llm(tmp_path: Path, monkeypatch) -> None:
