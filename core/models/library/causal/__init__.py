@@ -1,1 +1,1 @@
-from core.models.library.causal import double_ml  # noqa: F401
+from core.models.library.causal import double_ml, iv_2sls  # noqa: F401

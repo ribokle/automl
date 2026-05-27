@@ -102,6 +102,7 @@ class ModelHparams(BaseModel):
     lasso: dict[str, Any] = Field(default_factory=dict)
     elasticnet: dict[str, Any] = Field(default_factory=dict)
     lightgbm: dict[str, Any] = Field(default_factory=dict)
+    iv_2sls: dict[str, Any] = Field(default_factory=dict)
 
 
 class Settings(BaseSettings):

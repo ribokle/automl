@@ -61,8 +61,12 @@ jobs:
       - name: Install with econometric extra
         run: uv sync --dev --extra models-econometric
 
-      - name: Panel model tests
-        run: uv run --with pytest pytest tests/unit/test_library_panel.py -q --tb=short
+      - name: Panel + IV model tests
+        run: >
+          uv run --with pytest pytest
+          tests/unit/test_library_panel.py
+          tests/unit/test_library_causal.py
+          -q --tb=short
 
   node:
     name: Next.js type-check & build

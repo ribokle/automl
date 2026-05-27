@@ -27,7 +27,7 @@ class DeterministicRouter:
                 return ["fixed_effects", "loglog_ols", "lightgbm"]
             if profile.n_obs < s.small_n_threshold:
                 return ["ridge", "loglog_ols", "lasso", "huber"]
-            return ["loglog_ols", "elasticnet", "double_ml", "lightgbm"]
+            return ["loglog_ols", "elasticnet", "double_ml", "iv_2sls", "lightgbm"]
         if problem == ProblemType.CROSS_PRICE:
             return ["crossprice_loglog", "aids", "nested_logit"]
         if problem == ProblemType.FORECAST:

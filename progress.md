@@ -1786,12 +1786,32 @@ dedicated FORECAST path, distinct from the price-optimisation flow.
 - Synthetic 6-store panel with store fixed effects: FE & RE both recover -1.702
   (truth -1.7); a 2-PPG store-grain run recovers -1.70 / -2.30.
 
-### Phase 8 — Still deferred (heaviest / most fragile)
-- **IV/2SLS** (linearmodels): needs instrument columns (cost shifters) not in
-  the current feature set — a data-prep change, not just a model.
+### Phase 8i — Instrumental variables (2SLS), opt-in ✅
+**Status:** complete. Endogeneity correction via instruments, fully opt-in.
+- New `causal/iv_2sls` plugin (optional dep `linearmodels`): instruments
+  `log_price` with operator-nominated cost-shifter columns
+  (`hparams['instruments']`). Raises (and the escalation skips it) unless an
+  instrument is both configured AND present, so it never perturbs a default
+  run. Emits a full log-space coefficient vector → predictor-compatible
+  (`LINEAR_COEFF_MODELS`). Sits at position 4 of the OWN_ELASTICITY preference
+  so it's reachable when enabled but won't be reached before loglog under the
+  default `max_candidates`.
+- `ModelHparams.iv_2sls` block for the `instruments` list; `econometric-extras`
+  CI job now also runs the causal tests.
+
+**Tests** (`test_library_causal.py`, skip without linearmodels): IV requires
+instruments (raises otherwise) and recovers an elasticity much closer to truth
+than the confounded OLS slope. Full unit suite: 321 passed, 11 skipped.
+
+**Verification**
+- Endogenous synthetic (unobserved confounder + `log_cost` instrument): naive
+  OLS slope -0.80 (biased), IV recovers -1.45 (truth -1.5).
+
+### Phase 8 — Still deferred (heaviest / most fragile, intentionally opt-in)
 - **Structural demand systems** (logit/nested/AIDS/QUAIDS/BLP via pyblp) and
   **deep sequence models** (DeepAR/LSTM/TFT via torch): heavy/fragile optional
-  deps. `ModelResult.cross_price` / the FORECAST path already accommodate them.
+  deps that can't be validated in this environment. `ModelResult.cross_price` /
+  the FORECAST path already accommodate them when the deps are present.
   logit/AIDS/BLP, VARX, GNN, hierarchical Bayes via pymc): need a multi-PPG /
   multi-store frame passed to the plugin, not a single PPG slice.
 - **Deep sequence models** (DeepAR/LSTM/GRU/TFT/N-BEATS): forecast-path models
