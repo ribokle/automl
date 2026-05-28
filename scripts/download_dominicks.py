@@ -39,9 +39,8 @@ import urllib.error
 import urllib.request
 import zipfile
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Optional
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_MANIFEST = REPO_ROOT / "scripts" / "dominicks_manifest.json"
@@ -57,15 +56,15 @@ TIMEOUT_SECS = 120
 class Item:
     filename: str
     url: str
-    category: Optional[str] = None
+    category: str | None = None
     status: str = "pending"  # pending | ok | failed | skipped
-    error: Optional[str] = None
+    error: str | None = None
     bytes_downloaded: int = 0
-    last_attempt: Optional[str] = None
+    last_attempt: str | None = None
 
 
 def utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+    return datetime.now(UTC).isoformat(timespec="seconds")
 
 
 def human_size(n: float) -> str:
@@ -163,7 +162,7 @@ def download_one(
     print(f"\r  -> {item.filename}  [ok, {human_size(downloaded)}]            ")
 
 
-def extract_zip(path: Path, dest: Path, category: Optional[str]) -> None:
+def extract_zip(path: Path, dest: Path, category: str | None) -> None:
     if path.suffix.lower() != ".zip":
         return
     out_dir = dest / (category or path.stem)

@@ -276,7 +276,7 @@ def _agents_for_depth(comparison_agents: list[str] | None) -> tuple[str, ...]:
     return _COMPARISON_DOWNSTREAM_AGENTS[: last_idx + 1]
 
 
-def _snapshot_mtimes(run_dir: "Path") -> dict[str, float]:
+def _snapshot_mtimes(run_dir: Path) -> dict[str, float]:
     """Capture ``{name: mtime}`` for every comparison artifact in ``run_dir``.
 
     Used as a baseline so the comparison loop can detect which files

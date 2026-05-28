@@ -45,7 +45,7 @@ class CategoryBenchmark:
 _COMPARABLE = {"chain", "ppg_week"}
 
 
-def comparable(run_grain: str, bench: "CategoryBenchmark | None") -> str:
+def comparable(run_grain: str, bench: CategoryBenchmark | None) -> str:
     """How well does ``run_grain`` line up with the benchmark's measurement scale?"""
     if bench is None:
         return "no_benchmark"

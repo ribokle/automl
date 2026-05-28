@@ -15,7 +15,7 @@ attribute uppercased with underscores.
 from __future__ import annotations
 
 import os
-from enum import Enum
+from enum import StrEnum
 from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, Any, Literal
@@ -24,7 +24,7 @@ from pydantic import BaseModel, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
-class ModellingGrain(str, Enum):
+class ModellingGrain(StrEnum):
     """Aggregation grain the modelling agent fits demand models at.
 
     Two-axis catalogue: the spatial axis is chain vs store, and the

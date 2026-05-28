@@ -33,14 +33,14 @@ import json
 import shutil
 import subprocess
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from core.config import get_settings
 from core.llm.cost import estimate_usd
 
 
-class LLMProvider(str, Enum):
+class LLMProvider(StrEnum):
     DRY_RUN = "dry_run"
     API = "api"
     OAUTH = "oauth"

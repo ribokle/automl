@@ -30,7 +30,7 @@ agent can surface it as model-fit error rather than spurious "due to X".
 from __future__ import annotations
 
 import math
-from typing import Iterable
+from collections.abc import Iterable
 
 import numpy as np
 import pandas as pd

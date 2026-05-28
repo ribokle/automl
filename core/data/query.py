@@ -26,7 +26,7 @@ class Measure(BaseModel):
     alias: str | None = None
 
     @model_validator(mode="after")
-    def _check(self) -> "Measure":
+    def _check(self) -> Measure:
         if not is_measure(self.column):
             raise ValueError(f"unknown measure column: {self.column}")
         if self.agg not in ALLOWED_AGGS:
@@ -52,7 +52,7 @@ class Dimension(BaseModel):
     alias: str | None = None
 
     @model_validator(mode="after")
-    def _check(self) -> "Dimension":
+    def _check(self) -> Dimension:
         if not is_dimension(self.column):
             raise ValueError(f"unknown dimension column: {self.column}")
         return self
@@ -84,7 +84,7 @@ class QuerySpec(BaseModel):
     limit: int = 5_000
 
     @model_validator(mode="after")
-    def _check(self) -> "QuerySpec":
+    def _check(self) -> QuerySpec:
         if not self.dimensions and not self.measures:
             raise ValueError("query requires at least one dimension or measure")
         for col in self.filters:

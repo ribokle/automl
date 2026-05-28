@@ -28,7 +28,7 @@ def _severity_from_status(status: str, configured_severity: str | None) -> Sever
     return Severity.info
 
 
-def _ensure_dbt_packages(runner: "object", project_dir: Path) -> None:
+def _ensure_dbt_packages(runner: object, project_dir: Path) -> None:
     """Install dbt package deps the first time we see this project_dir.
 
     Lets a fresh checkout run end-to-end without a separate `dbt deps` step —

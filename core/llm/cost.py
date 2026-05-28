@@ -77,7 +77,7 @@ def _format_duration(seconds: float | None) -> str:
     return f"{minutes}m {sec}s"
 
 
-def summarise_run(run: "RunState") -> tuple[list[AgentCost], CostTotals]:
+def summarise_run(run: RunState) -> tuple[list[AgentCost], CostTotals]:
     """Roll up per-agent tokens, cost, and duration from a `RunState`.
 
     The base ``Agent`` class already populates ``tokens_in / tokens_out /

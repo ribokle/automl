@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import uuid
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
@@ -34,7 +34,7 @@ AGENT_ORDER: list[str] = [
 ]
 
 
-class AgentStatus(str, Enum):
+class AgentStatus(StrEnum):
     pending = "pending"
     running = "running"
     awaiting_approval = "awaiting_approval"
@@ -76,7 +76,7 @@ class AgentResult(BaseModel):
     provider: str = ""
 
 
-class RunStatus(str, Enum):
+class RunStatus(StrEnum):
     pending = "pending"
     running = "running"
     awaiting_approval = "awaiting_approval"
@@ -96,7 +96,7 @@ class RunState(BaseModel):
     options: dict[str, Any] = Field(default_factory=dict)
 
     @classmethod
-    def new(cls, data_path: str, run_dir: Path, options: dict[str, Any] | None = None) -> "RunState":
+    def new(cls, data_path: str, run_dir: Path, options: dict[str, Any] | None = None) -> RunState:
         run_dir.mkdir(parents=True, exist_ok=True)
         rs = cls(
             data_path=data_path,
@@ -113,7 +113,7 @@ class RunState(BaseModel):
         return path
 
     @classmethod
-    def load(cls, run_dir: Path) -> "RunState":
+    def load(cls, run_dir: Path) -> RunState:
         return cls.model_validate_json((run_dir / "state.json").read_text(encoding="utf-8"))
 
 
