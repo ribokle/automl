@@ -23,7 +23,6 @@ from core.models.base import ElasticityFit
 from core.models.metrics import wape_units
 from core.models.shap_attribution import ols_shap_summary
 
-
 PRICE_COL = "log_price"
 TARGET = "log_units"
 ELASTICITY_SUSPECT_THRESHOLD = 6.0
@@ -59,7 +58,7 @@ def fit_loglog(
     y_train, X_train = _design(frame, cols)
     model = sm.OLS(y_train, X_train).fit()
 
-    coefs = dict(zip(["const", *cols], (float(v) for v in model.params)))
+    coefs = dict(zip(["const", *cols], (float(v) for v in model.params), strict=False))
     own_idx = 1
     own_beta = float(model.params[own_idx])
     own_se = float(model.bse[own_idx])
@@ -83,7 +82,7 @@ def fit_loglog(
             diagnostics["elasticity_robust"] = robust_beta
             own_beta = robust_beta
             own_se = robust_se
-            coefs = dict(zip(["const", *cols], (float(v) for v in rlm.params)))
+            coefs = dict(zip(["const", *cols], (float(v) for v in rlm.params), strict=False))
             # RLM doesn't compute p-values the same way; surface t-stat magnitude.
             diagnostics["robust_t"] = (
                 robust_beta / robust_se if robust_se > 0 else float("nan")

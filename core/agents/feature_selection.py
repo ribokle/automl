@@ -17,7 +17,6 @@ import duckdb
 from core.agents.base import Agent
 from core.orchestrator.state import AgentResult, ArtifactRef, RunState
 
-
 SYSTEM_PROMPT = """You are a pricing-analytics feature analyst. Given the panel
 columns and their roles, return STRICT JSON with a short rationale (<=240 chars)
 explaining the chosen feature set: {"rationale": "..."}. JSON only."""

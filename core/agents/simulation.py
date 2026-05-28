@@ -36,7 +36,6 @@ from core.simulation.grid import (
     simulate_predictor_grid,
 )
 
-
 SYSTEM_PROMPT = """You are the pricing scenario analyst. You receive a
 compact per-PPG table with revenue-optimal and margin-optimal price
 multipliers from a vectorised what-if sweep. Return STRICT JSON:

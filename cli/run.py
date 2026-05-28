@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 from pathlib import Path
 
 import typer
@@ -55,7 +54,7 @@ def run(
             console.print(
                 f"[red]Invalid --modelling-grain {modelling_grain!r}; expected one of {allowed}[/red]"
             )
-            raise typer.Exit(code=1)
+            raise typer.Exit(code=1) from None
 
     state = RunState.new(
         data_path=str(data.resolve()),
@@ -206,11 +205,13 @@ def prepare_dominicks(
 
     import duckdb as _duckdb
     glob = str(out / "*.parquet")
-    n_skus, n_stores, n_weeks, dt_min, dt_max = _duckdb.execute(
+    _row = _duckdb.execute(
         "SELECT count(DISTINCT sku), count(DISTINCT store_id), count(DISTINCT week_start),"
         "       min(week_start), max(week_start)"
         f" FROM read_parquet('{glob}')"
     ).fetchone()
+    assert _row is not None
+    n_skus, n_stores, n_weeks, dt_min, dt_max = _row
 
     cats = ", ".join(sorted(summary["categories"]))
     console.print(

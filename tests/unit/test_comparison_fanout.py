@@ -58,7 +58,7 @@ def test_snapshot_mtimes_captures_json_artifacts_only(tmp_path: Path) -> None:
     # Only top-level JSON artifacts; non-JSON files (b.csv) and
     # subdirectories are skipped.
     assert set(snap.keys()) == {"a.json"}
-    for name, mtime in snap.items():
+    for _name, mtime in snap.items():
         assert isinstance(mtime, float)
 
 

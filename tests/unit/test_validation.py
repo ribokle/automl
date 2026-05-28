@@ -3,12 +3,10 @@ from __future__ import annotations
 
 import asyncio
 import json
-import math
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import pytest
 
 from core.agents.validation import ValidationAgent
 from core.orchestrator.state import AgentResult, AgentStatus, RunState

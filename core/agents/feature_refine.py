@@ -18,7 +18,6 @@ from core.features.engineering import ENGINEERED_COLUMNS, TARGET
 from core.features.refine import refine_features
 from core.orchestrator.state import AgentResult, ArtifactRef, RunState
 
-
 SYSTEM_PROMPT = """You are a pricing feature analyst. Given the kept features, the
 dropped features with their reason, and the final VIF + max |corr|, return STRICT
 JSON of the form {"narrative": "<=320 chars on what the refined set captures and

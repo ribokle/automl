@@ -25,13 +25,16 @@ from core.data.charts import (
 )
 from core.features.grain_options import (
     _query_shape as query_panel_shape,
+)
+from core.features.grain_options import (
     list_grain_options,
+)
+from core.features.grain_options import (
     to_payload as grain_options_payload,
 )
 from core.orchestrator.state import AgentResult, ArtifactRef, RunState
 from core.ppg.cluster import ClusterParams, apply_mapping_to_panel, cluster_ppgs
 from core.ppg.features import aggregate_sku_features
-
 
 SYSTEM_PROMPT = """You are the Price-Pack Group (PPG) mapping reviewer for a CPG analytics platform.
 You receive a deterministic PPG mapping produced by a clustering algorithm grouped by

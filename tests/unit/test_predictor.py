@@ -15,7 +15,6 @@ import pandas as pd
 
 from core.models.predictor import Predictor, build_predictor
 
-
 COEFS = {
     "const": 6.5,
     "log_price": -2.0,

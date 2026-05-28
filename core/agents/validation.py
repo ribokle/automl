@@ -26,7 +26,11 @@ import pandas as pd
 from core.agents.base import Agent
 from core.benchmarks.elasticity import (
     classify as classify_benchmark,
+)
+from core.benchmarks.elasticity import (
     comparable as benchmark_comparable,
+)
+from core.benchmarks.elasticity import (
     load_elasticity_benchmarks,
 )
 from core.config import get_settings

@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import Any
 
 import duckdb
-import numpy as np
 import pandas as pd
 
 
@@ -32,7 +31,8 @@ def panel_overview(duckdb_path: Path, table: str = "main.panel") -> dict[str, An
             """
         ).fetchone()
         cols = ["rows", "n_skus", "n_stores", "n_ppgs", "week_min", "week_max", "null_units", "null_price"]
-        return {k: v for k, v in zip(cols, agg)}
+        assert agg is not None
+        return {k: v for k, v in zip(cols, agg, strict=False)}
     finally:
         con.close()
 

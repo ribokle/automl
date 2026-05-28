@@ -10,13 +10,12 @@ import asyncio
 import os
 from pathlib import Path
 
-import pytest
 from fastapi.testclient import TestClient
 
 from core.agents.base import Agent
 from core.orchestrator import runner
 from core.orchestrator.gates import RERUNNABLE_AGENTS, gate_registry
-from core.orchestrator.state import AGENT_ORDER, AgentResult, AgentStatus, RunState
+from core.orchestrator.state import AgentResult, AgentStatus, RunState
 
 
 def test_rerunnable_whitelist_includes_optimization_and_modeling() -> None:

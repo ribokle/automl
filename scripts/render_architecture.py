@@ -6,9 +6,10 @@ tool layer, and per-run artifacts.
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 import matplotlib.pyplot as plt
 from matplotlib.patches import FancyArrowPatch, FancyBboxPatch, Rectangle
-
 
 W, H = 22, 14
 fig, ax = plt.subplots(figsize=(W, H), dpi=160)
@@ -281,8 +282,6 @@ ax.text(W / 2, 0.35,
         "P3 elasticity sign ≥7/8 PPGs   ·   P4 decomp reconciles   ·   "
         "P5 MILP respects ladder/margin/comp-gap   ·   P6 HTML+PDF + cost dashboard",
         ha="center", va="center", fontsize=8.5, color="#334155", style="italic")
-
-from pathlib import Path
 
 out = Path(__file__).resolve().parents[1] / "docs" / "architecture.png"
 out.parent.mkdir(parents=True, exist_ok=True)

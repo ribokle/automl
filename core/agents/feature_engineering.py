@@ -20,7 +20,6 @@ from core.features.eda import aggregate_features
 from core.features.engineering import ENGINEERED_COLUMNS, TARGET, build_features
 from core.orchestrator.state import AgentResult, ArtifactRef, RunState
 
-
 SYSTEM_PROMPT = """You are a pricing feature engineer. Given the list of engineered
 columns and brief stats, return STRICT JSON of the form
 {"narrative": "<=320 chars on what the feature set captures"}. JSON only."""

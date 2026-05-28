@@ -21,7 +21,7 @@ async def get_artifact(run_id: str, path: str) -> FileResponse:
     try:
         target.relative_to(base)
     except ValueError:
-        raise HTTPException(status_code=400, detail="invalid path")
+        raise HTTPException(status_code=400, detail="invalid path") from None
     if not target.exists() or not target.is_file():
         raise HTTPException(status_code=404, detail="artifact not found")
     return FileResponse(target)

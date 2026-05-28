@@ -25,7 +25,6 @@ import numpy as np
 import pandas as pd
 from lightgbm import LGBMRegressor
 
-
 MAX_BEESWARM_ROWS = 100
 
 

@@ -23,7 +23,6 @@ from core.optimization.predict import cell_metrics, predict_units
 from core.orchestrator.state import AgentResult, AgentStatus, RunState
 from core.simulation.grid import ScenarioGridSpec, simulate_ols_grid
 
-
 COEFS_ELASTIC = {
     "const": 6.5,
     "log_price": -2.0,

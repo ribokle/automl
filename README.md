@@ -252,7 +252,13 @@ uv run uvicorn api.main:app --host 0.0.0.0 --port 8000
 | `POST` | `/uploads` | Upload a CSV (returns a path usable by `/runs`) |
 | `GET` | `/artifacts/{run_id}/{path}` | Read any artefact under `runs/<id>/` |
 
-## Web UI
+## Frontends
+
+There are two Next.js applications. Both read run artifacts from the API; neither carries a hostname in the browser bundle — all fetches go through same-origin `/api/*` and the Next.js proxy injects the bearer token server-side.
+
+### Operator UI (`web/` — port 3000)
+
+The operator frontend controls pipeline runs and monitors agent progress in real time.
 
 ```bash
 cd web
@@ -262,47 +268,132 @@ pnpm dev          # http://localhost:3000
 pnpm build && pnpm start
 ```
 
-The UI:
+**Pages**
 
-- Lists runs with live status pulled from the API; a collapsible sidebar on
-  `/runs/[id]` links between recent runs without leaving the page.
-- Streams agent events over SSE and renders a vertical step tracker with a
-  progress bar, current-step badge, and elapsed-time counter.
-- A **replay scrubber** above the timeline drags through the persisted
-  `events.jsonl` history — every card recomputes its status, summary chips,
-  and duration from the visible event slice. `Space` toggles play/pause,
-  `←` / `→` step one event.
-- Per agent, when the disclosure is open: reasoning, ordered tool calls,
-  the *Agent thinking* panel (system / user / response per LLM call), the
-  per-agent inline charts and tables described in **Quickstart**, a link
-  to every artefact the agent produced, and a *Common questions & corner
-  cases* disclosure with the FAQ for that stage (full reference in
-  `docs/stage-faqs.md`).
-- An **executive banner** at the top of the run page renders headline +
-  KPIs + HTML/PDF report download buttons once the insights agent finishes.
-- Approve / reject controls release the active approval gate without
-  leaving the run page; the optimisation gate also supports an
-  **edit-and-re-solve** loop via the inline constraint editor (ladder /
-  margin floor / comp gap / max move) that calls `POST /runs/{id}/rerun`
-  and re-arms the gate.
-- A **cost dashboard** and **artifact gallery** at the bottom of the page
-  index per-agent tokens/$ and every JSON / CSV / parquet produced.
+| Route | Description |
+|---|---|
+| `/` | Home — start a new run (upload CSV or server-side path), see recent runs |
+| `/runs` | All runs — active and archived; archive / restore / delete |
+| `/runs/[id]` | Run detail — agent timeline, cost dashboard, artifact gallery |
+| `/runs/[id]/eda` | Advanced EDA dashboard for the run |
 
-Throwaway design-record pages live under `web/app/dev/` (`/dev/inline`,
-`/dev/tabs`, `/dev/subroutes/*`) — these are the layout mockups that
-informed the inline-visuals choice; they're not part of the production
-flow.
+**Starting a run (`/`):**
 
-If the API server isn't on `http://localhost:8000`, point the Next.js proxy
-at it via `API_PROXY_TARGET` at next-server **runtime** (no rebuild required):
+Pick a data source, toggle options, click **Run pipeline**:
+
+- **Upload CSV** — local file with columns `sku, store_id, week_start, units, price, tpr_flag` (max 200 MiB).
+- **Server-side path** — path already present on the API server (default: `data/synthetic.csv`).
+
+Options:
+
+| Option | Default | Effect |
+|---|---|---|
+| Agent mode | on | LLM narratives and summaries. Off → deterministic fallbacks, zero spend. |
+| Approval gates | off | Pause after PPG mapping, modeling, and optimization for manual review. |
+| Pick modelling grain after ingestion | on | Pause after PPG mapping to choose modelling granularity (chain × PPG, store × brand, etc.). |
+
+**Run detail (`/runs/[id]`):**
+
+The timeline shows all 14 agents in DAG order. Each agent card expands to show: live event stream, inline charts and tables, reasoning, *Agent thinking* pane (LLM prompt + response), artifact links, and a *Common questions & corner cases* FAQ.
+
+Additional panels:
+
+- **Executive banner** — headline insight and PDF download once `insights` completes.
+- **Replay bar** — scrub through SSE events to replay the run at any timestamp (`Space` play/pause, `←`/`→` step one event).
+- **Cost dashboard** — per-agent token counts and estimated USD spend.
+- **Artifact gallery** — direct links to every JSON / CSV / Parquet artifact.
+- **Sidebar** — lists all runs with status dots; click any to switch without a full reload.
+
+**Runs list (`/runs`):**
+
+Toggle between Active and Archived. Per row: click the ID to open the detail page; **archive** to hide from the active list (run must be finished); **restore** to move back; **delete** to permanently remove from disk.
+
+If the API server is not on `http://localhost:8000`, point the proxy at it at **runtime** (no rebuild needed):
 
 ```bash
 API_PROXY_TARGET=https://api.example.com API_AUTH_TOKEN=$TOKEN pnpm start
 ```
 
-The browser bundle never carries a hostname — same-origin `/api/*` requests
-are forwarded by `web/app/api/[...path]/route.ts`, which also injects
-`Authorization: Bearer $API_AUTH_TOKEN` when the API has auth turned on.
+Throwaway design-record pages live under `web/app/dev/` — these are layout mockups that informed the inline-visuals choice; they are not part of the production flow.
+
+---
+
+### Business UI (`web-client/` — port 3001)
+
+A presentation-ready view aimed at category managers and CPG operators who want decisions, not diagnostics. It reads artifacts from a completed run via `?runId=<id>`.
+
+```bash
+cd web-client
+pnpm install
+pnpm dev          # http://localhost:3001
+```
+
+Reach it from the operator UI via the **Business view ↗** link in the run subnav.
+
+**Pages**
+
+| Route | Description |
+|---|---|
+| `/dashboard?runId=` | Executive summary — headline KPI, top recommendations, revenue chart |
+| `/recommendations?runId=` | Per-PPG recommended prices, revenue lift, and actions |
+| `/simulate?runId=` | What-if simulator — drag price sliders, units / revenue / guardrails update in real time |
+| `/validation?runId=` | Model quality — benchmark comparisons, hold-out WAPE, validation table |
+| `/methodology?runId=` | Plain-English explanation of how the pipeline works |
+
+Theme (light/dark) and accent colour are togglable in the top nav.
+
+---
+
+## User flows
+
+### 1. Quick smoke run (no gates, no LLM spend)
+
+1. `make seed` to generate `data/synthetic.csv`.
+2. Open `http://localhost:3000`.
+3. Select **Server-side path**, leave the default `data/synthetic.csv`.
+4. Uncheck **Agent mode** (dry-run) and **Approval gates**.
+5. Optionally uncheck **Pick modelling grain** for fully unattended execution.
+6. Click **Run pipeline** → all 14 agents complete automatically.
+7. When done, click **Business view ↗** in the run subnav to see the presentation-ready summary.
+
+### 2. Interactive run with approval gates
+
+1. Upload your CSV or use the synthetic panel.
+2. Enable **Approval gates** and **Pick modelling grain after ingestion**.
+3. Click **Run pipeline**.
+4. **Gate 1 — Grain selection (after `ppg_mapping`):** the pipeline pauses. Choose a primary modelling grain from a 3×2 grid (PPG / category / brand × chain / store) showing expected cell counts and a recommendation badge. Optionally queue comparison grains for a side-by-side fan-out. Click **Approve**.
+5. **Gate 2 — Modeling review (after `modeling`):** inspect per-PPG fit diagnostics. Click **Approve** to continue or **Reject** to mark the run failed.
+6. **Gate 3 — Optimization review (after `optimization`):** review the recommendation table and KPI summary. Edit constraints if needed (see flow 4), then click **Approve** to continue to validation and insights.
+7. When `insights` completes the executive banner appears with an HTML/PDF download. Open `http://localhost:3001/dashboard?runId=<id>` for the business view.
+
+### 3. Business review of a completed run
+
+1. Note the run ID from the operator timeline (e.g. `abc123`).
+2. Open `http://localhost:3001/dashboard?runId=abc123`.
+3. Navigate **Dashboard → Recommendations → Simulate → Validation → How it works**.
+4. Use **Simulate** to test alternative price points interactively before making a final call.
+
+### 4. Re-running optimization with revised constraints
+
+At the optimization gate, edit any constraint in the approval panel:
+
+| Constraint | Effect |
+|---|---|
+| **Price ladder** | Comma-separated allowed price points |
+| **Margin floor %** | Minimum acceptable gross margin |
+| **Competitive gap %** | Required price gap vs. competitor |
+| **Max decrease / increase** | Per-PPG price change bounds |
+| **Objective** | Optimise for revenue or margin |
+
+Click **Re-run optimization** — the orchestrator re-executes only the `optimization` agent and re-arms the gate. Repeat as needed without restarting ingestion, PPG mapping, or modeling. Click **Approve** when satisfied.
+
+### 5. Comparing modelling grains side-by-side
+
+At Gate 1 (grain selection), after choosing a primary grain tick additional **comparison grains**. The orchestrator fans out a modeling run for each in parallel and merges results into the validation table, letting you compare elasticity recovery and fit metrics across grains before committing.
+
+### 6. Event replay
+
+On any run's timeline page, use the **Replay bar** to scrub to any point in time. All 14 agent cards recompute their state from the visible event slice — useful for debugging or walking through a run step-by-step in a review meeting. `Space` plays/pauses; `←`/`→` steps one event at a time.
 
 ## Configuration
 

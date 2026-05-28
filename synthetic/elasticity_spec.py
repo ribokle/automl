@@ -5,7 +5,7 @@ must recover them within the tolerances defined in `synthetic/truth.json`.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 
 
 @dataclass(frozen=True)

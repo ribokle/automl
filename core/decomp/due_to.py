@@ -35,7 +35,6 @@ from typing import Iterable
 import numpy as np
 import pandas as pd
 
-
 DEFAULT_DUMMY_FEATURES: frozenset[str] = frozenset(
     {"tpr_share", "display_share", "feature_share", "is_holiday_week"}
 )

@@ -1073,10 +1073,8 @@ def _pool_per_store_to_ppg(per_ppg: list[dict]) -> list[dict]:
         sum_w = sum(weights)
         if sum_w <= 0:
             continue
-        pooled_e = sum(w * e for (e, _, _, _), w in zip(cells, weights)) / sum_w
+        pooled_e = sum(w * e for (e, _, _, _), w in zip(cells, weights, strict=False)) / sum_w
         pooled_se = (1.0 / sum_w) ** 0.5
-        # Median test-wape across cells is a more robust headline than a mean.
-        test_wapes_sorted = sorted(c[2] for c in cells)
         pooled.append(
             {
                 "ppg_id": ppg_id,

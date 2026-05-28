@@ -24,7 +24,6 @@ import pandas as pd
 
 from core.models.metrics import chronological_split
 
-
 OLS_KINDS = {"loglog_ols", "semilog_ols"}
 
 # Models whose downstream contribution is computed analytically from a

@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from typing import Literal, TypedDict
 
-
 ColumnRole = Literal["dimension", "measure", "time"]
 ColumnUnit = Literal["count", "dollars", "share", "ratio", "category", "date", "id"]
 

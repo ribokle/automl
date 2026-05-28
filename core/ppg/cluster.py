@@ -17,7 +17,6 @@ Strategy (mirrors how a CPG analyst would do this by hand):
 """
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -101,7 +100,7 @@ def cluster_ppgs(sku_features: pd.DataFrame, params: ClusterParams | None = None
 
         centroids: list[np.ndarray] = [X[local_labels == c].mean(axis=0) for c in range(local_k)]
         ppg_ids: list[str] = []
-        for c in range(local_k):
+        for _c in range(local_k):
             ppg_ids.append(f"PPG_AUTO_{next_ppg_idx:02d}")
             next_ppg_idx += 1
 
@@ -150,8 +149,8 @@ def label_match_accuracy(predicted: pd.Series, truth: pd.Series) -> dict[str, fl
 
     pred_labels = sorted(predicted.unique())
     truth_labels = sorted(truth.unique())
-    p_idx = {l: i for i, l in enumerate(pred_labels)}
-    t_idx = {l: i for i, l in enumerate(truth_labels)}
+    p_idx = {label: i for i, label in enumerate(pred_labels)}
+    t_idx = {label: i for i, label in enumerate(truth_labels)}
     cm = np.zeros((len(pred_labels), len(truth_labels)), dtype=int)
     for p, t in zip(predicted, truth, strict=True):
         cm[p_idx[p], t_idx[t]] += 1
@@ -194,6 +193,6 @@ def apply_mapping_to_panel(
             WHERE p.sku = a.sku
             """
         )
-        return int(con.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])
+        return int(con.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])  # type: ignore[index]
     finally:
         con.close()

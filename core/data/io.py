@@ -15,7 +15,7 @@ def load_csv_to_duckdb(csv_path: Path, duckdb_path: Path, table: str = "raw_pane
         # ppg_id is optional in the schema (filled in later by the ppg_mapping
         # agent). Ensure the column exists so downstream dbt casts don't fail.
         con.execute(f"alter table main.{table} add column if not exists ppg_id varchar")
-        (rows,) = con.execute(f"select count(*) from main.{table}").fetchone()
+        rows = con.execute(f"select count(*) from main.{table}").fetchone()[0]  # type: ignore[index]
         return int(rows)
     finally:
         con.close()

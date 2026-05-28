@@ -28,6 +28,7 @@ from pathlib import Path
 
 import pandas as pd
 
+import core.models.library  # noqa: F401 — register model plugins
 from core.agents.base import Agent
 from core.decomp.ablation import decompose_via_ablation, summarise_groups
 from core.decomp.due_to import (
@@ -35,8 +36,7 @@ from core.decomp.due_to import (
     decompose_ols_frame,
     summarise_ppg,
 )
-from core.decomp.groups import FEATURE_TO_GROUP, GROUP_ORDER, group_for
-import core.models.library  # noqa: F401 — register model plugins
+from core.decomp.groups import FEATURE_TO_GROUP, GROUP_ORDER
 from core.models.library import registry as model_registry
 from core.models.library.base import FitContext
 from core.models.predictor import (
@@ -46,7 +46,6 @@ from core.models.predictor import (
     build_predictor,
 )
 from core.orchestrator.state import AgentResult, ArtifactRef, RunState
-
 
 SYSTEM_PROMPT = """You are the demand-decomposition analyst. You receive
 per-PPG totals split into base + due-to-{price, promo, distribution,

@@ -21,7 +21,7 @@ import duckdb
 import numpy as np
 import pandas as pd
 
-from core.data.ingestion_report import CheckResult, IngestionReport
+from core.data.ingestion_report import IngestionReport
 
 
 def _connect(duckdb_path: Path) -> duckdb.DuckDBPyConnection:
@@ -94,7 +94,7 @@ def quality_results(report: IngestionReport) -> dict[str, Any]:
     checks: list[dict[str, Any]] = []
     n_pass = n_warn = n_fail = 0
     for c in [*report.dbt, *report.ge]:
-        ui_status = c.status
+        ui_status: str = c.status
         if c.status == "fail" and c.severity.value == "warn":
             ui_status = "warn"
         if ui_status == "pass":

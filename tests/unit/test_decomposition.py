@@ -21,7 +21,7 @@ from core.decomp.due_to import (
     decompose_ols_frame,
     summarise_ppg,
 )
-from core.decomp.groups import FEATURE_TO_GROUP, GROUP_ORDER
+from core.decomp.groups import FEATURE_TO_GROUP
 from core.orchestrator.state import AgentResult, AgentStatus, RunState
 
 

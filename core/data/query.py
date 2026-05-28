@@ -10,13 +10,12 @@ through DuckDB parameters.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 import duckdb
 from pydantic import BaseModel, Field, model_validator
 
 from core.data.column_meta import ALLOWED_AGGS, COLUMNS, is_dimension, is_measure
-
 
 MAX_LIMIT = 50_000
 

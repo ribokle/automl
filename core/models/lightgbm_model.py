@@ -33,7 +33,6 @@ from core.models.base import ElasticityFit
 from core.models.metrics import wape_units
 from core.models.shap_attribution import lightgbm_shap_summary
 
-
 TARGET = "log_units"
 LOG_PRICE = "log_price"
 _DELTA = np.log(1.01)
@@ -110,7 +109,7 @@ def fit_lightgbm(
         "delta_log_price": _DELTA,
         "elasticity_sd_across_rows": elasticity_sd,
         "feature_importances": {
-            c: float(v) for c, v in zip(cols, model.feature_importances_)
+            c: float(v) for c, v in zip(cols, model.feature_importances_, strict=False)
         },
         "shap": lightgbm_shap_summary(model, X_train),
     }

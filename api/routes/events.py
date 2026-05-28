@@ -40,7 +40,7 @@ async def stream_events(run_id: str, request: Request) -> EventSourceResponse:
                     yield {"event": "message", "data": json.dumps(msg, default=str)}
                     if msg.get("type") == "run_finished":
                         break
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     yield {"event": "ping", "data": "keepalive"}
         finally:
             bus.unsubscribe(run_id, queue)

@@ -11,7 +11,6 @@ from pathlib import Path
 import duckdb
 import pandas as pd
 
-
 PACK_ORDINAL: dict[str, int] = {"small": 1, "medium": 2, "large": 3}
 
 

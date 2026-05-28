@@ -23,7 +23,6 @@ from core.features.eda import (
 )
 from core.orchestrator.state import AgentResult, ArtifactRef, RunState
 
-
 SYSTEM_PROMPT = """You are a pricing EDA analyst. Given a panel overview, the target's
 relationship to each candidate, and the candidates' pairwise correlations, return
 STRICT JSON of the form

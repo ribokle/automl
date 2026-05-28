@@ -7,9 +7,10 @@ three data-preparation agents for real and leaves later stages as stubs.
 """
 from __future__ import annotations
 
-from core.agents.base import Agent, StubAgent
-from core.llm.client import AnthropicClient, LLMProvider
+from pathlib import Path
+
 from core.agents.advanced_eda import AdvancedEDAAgent
+from core.agents.base import Agent, StubAgent
 from core.agents.decomposition import DecompositionAgent
 from core.agents.eda import EDAAgent
 from core.agents.feature_engineering import FeatureEngineeringAgent
@@ -24,10 +25,10 @@ from core.agents.ppg_selection import PPGSelectionAgent
 from core.agents.results_reasoning import ResultsReasoningAgent
 from core.agents.simulation import SimulationAgent
 from core.agents.validation import ValidationAgent
+from core.llm.client import AnthropicClient, LLMProvider
 from core.orchestrator.events import bus
 from core.orchestrator.gates import DEFAULT_GATES, gate_registry
 from core.orchestrator.state import AGENT_ORDER, AgentStatus, RunState, RunStatus
-
 
 REAL_AGENTS: dict[str, type[Agent]] = {
     "ingestion": IngestionAgent,

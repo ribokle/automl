@@ -17,7 +17,6 @@ import pandas as pd
 
 
 def _r2_against_rest(X: np.ndarray, i: int) -> float:
-    n = X.shape[1]
     y = X[:, i]
     rest = np.delete(X, i, axis=1)
     rest_with_const = np.column_stack([np.ones(rest.shape[0]), rest])

@@ -5,7 +5,6 @@ Runs `dbt build` against the project at dbt/automl_dbt and returns a list of
 """
 from __future__ import annotations
 
-import json
 import os
 from pathlib import Path
 
@@ -75,7 +74,7 @@ def run_dbt_build(duckdb_path: Path, project_dir: Path = DBT_PROJECT_DIR) -> lis
         )
         return checks
 
-    for r in result.result.results:  # type: ignore[attr-defined]
+    for r in result.result.results:  # type: ignore[union-attr]
         node = r.node
         unique_id = getattr(node, "unique_id", "unknown")
         configured = getattr(node, "config", None)

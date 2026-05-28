@@ -10,7 +10,6 @@ from datetime import date
 
 from pydantic import BaseModel, Field
 
-
 REQUIRED_COLUMNS: tuple[str, ...] = (
     "sku",
     "week_start",

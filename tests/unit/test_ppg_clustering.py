@@ -11,8 +11,8 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from core.data.io import load_csv_to_duckdb
 from core.data.dbt_runner import run_dbt_build
+from core.data.io import load_csv_to_duckdb
 from core.ppg.cluster import cluster_ppgs, label_match_accuracy
 from core.ppg.features import aggregate_sku_features
 from synthetic.generator import generate_panel

@@ -27,7 +27,6 @@ from core.llm.cost import summarise_run
 from core.orchestrator.state import AgentResult, ArtifactRef, RunState
 from core.report.builder import build_html, build_pdf
 
-
 SYSTEM_PROMPT = """You are the executive-summary writer for a CPG pricing
 study. You receive: per-PPG recommended prices and promo states from a
 constrained MILP, the validation verdict per PPG, the model winner per

@@ -21,7 +21,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-
 DEFAULT_LADDER: tuple[float, ...] = (
     0.85, 0.90, 0.95, 0.98, 1.00, 1.02, 1.05, 1.10, 1.15,
 )

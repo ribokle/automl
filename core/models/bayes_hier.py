@@ -47,7 +47,6 @@ from dataclasses import dataclass
 
 import numpy as np
 
-
 Z_95 = 1.959963984540054  # two-sided 95% under Normal
 
 
@@ -134,7 +133,7 @@ def shrink(
     mu_re = float(np.sum(w_re * betas) / np.sum(w_re))
 
     posts: list[PosteriorEstimate] = []
-    for ppg, beta, se in zip(ppgs, betas, ses):
+    for ppg, beta, se in zip(ppgs, betas, ses, strict=False):
         s2 = se * se
         if tau2 > 0:
             # Inverse-variance combination of likelihood (β̂, s²) and prior (μ_RE, τ²).

@@ -135,7 +135,7 @@ async def delete_run(
     try:
         target.relative_to(run_dir_base.resolve())
     except ValueError:
-        raise HTTPException(status_code=400, detail="run_dir outside base")
+        raise HTTPException(status_code=400, detail="run_dir outside base") from None
     if target.exists():
         shutil.rmtree(target)
     _RUNS.pop(run_id, None)

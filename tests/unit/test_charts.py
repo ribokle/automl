@@ -7,7 +7,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import duckdb
 import numpy as np
 import pandas as pd
 import pytest
@@ -26,8 +25,8 @@ from core.data.charts import (
     weekly_trend,
 )
 from core.data.dbt_runner import run_dbt_build
-from core.data.io import load_csv_to_duckdb
 from core.data.ingestion_report import CheckResult, IngestionReport, Severity
+from core.data.io import load_csv_to_duckdb
 from core.ppg.cluster import ClusterParams, cluster_ppgs
 from core.ppg.features import aggregate_sku_features
 from core.ppg.score import score_ppgs

@@ -52,7 +52,6 @@ from core.optimization.continuous import solve_continuous
 from core.optimization.milp import solve_milp
 from core.orchestrator.state import AgentResult, ArtifactRef, RunState
 
-
 SYSTEM_PROMPT = """You are the pricing-optimisation analyst. You receive
 per-PPG recommended price/promo cells from a constrained MILP (price
 ladder + margin floor + competitive gap), the continuous warm-start

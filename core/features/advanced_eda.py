@@ -330,7 +330,7 @@ def isolation_forest_anomalies(panel: pd.DataFrame, ppgs: list[str]) -> list[dic
         forest.fit(features.values)
         scores = -forest.score_samples(features.values)
         rescaled = (scores - scores.min()) / max(1e-9, scores.max() - scores.min())
-        for idx, score in zip(features.index, rescaled):
+        for idx, score in zip(features.index, rescaled, strict=False):
             if score < 0.6:
                 continue
             row = sub.loc[idx]

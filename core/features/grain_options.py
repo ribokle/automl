@@ -27,7 +27,6 @@ import duckdb
 
 from core.config import ModellingGrain
 
-
 _PRODUCT_LABELS = {"ppg": "PPG", "category": "Category", "brand": "Brand"}
 _SPATIAL_LABELS = {"chain": "Chain", "store": "Store"}
 
@@ -86,6 +85,7 @@ def _query_shape(duckdb_path: Path, table: str = "main.panel") -> PanelShape:
         ).fetchone()
     finally:
         con.close()
+    assert row is not None
     return PanelShape(
         n_stores=int(row[0] or 0),
         n_ppgs=int(row[1] or 0),

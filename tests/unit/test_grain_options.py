@@ -9,7 +9,6 @@ from pathlib import Path
 
 import duckdb
 import pandas as pd
-import pytest
 
 from core.features.grain_options import list_grain_options
 

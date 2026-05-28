@@ -21,7 +21,6 @@ from core.data.charts import eligibility_bars
 from core.orchestrator.state import AgentResult, ArtifactRef, RunState
 from core.ppg.score import score_ppgs
 
-
 SYSTEM_PROMPT = """You are the PPG-selection analyst. You receive an eligibility table
 for every Price-Pack Group with a 0-1 score and a short metric-based reasoning. For each
 EXCLUDED PPG, return a one-line business rationale (<=140 chars) suitable for an exec

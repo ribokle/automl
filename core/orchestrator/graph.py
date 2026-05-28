@@ -8,7 +8,7 @@ from __future__ import annotations
 from core.orchestrator.state import AGENT_ORDER
 
 # Sequential pipeline; future phases may parallelise (e.g., EDA fan-out).
-EDGES: list[tuple[str, str]] = list(zip(AGENT_ORDER, AGENT_ORDER[1:]))
+EDGES: list[tuple[str, str]] = list(zip(AGENT_ORDER, AGENT_ORDER[1:], strict=False))
 
 
 def topo_order() -> list[str]:

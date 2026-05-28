@@ -15,7 +15,6 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-
 AGENT_ORDER: list[str] = [
     "ingestion",
     "ppg_mapping",

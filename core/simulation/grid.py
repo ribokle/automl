@@ -20,7 +20,6 @@ from itertools import product
 import numpy as np
 import pandas as pd
 
-
 DEFAULT_PRICE_MULTIPLIERS: tuple[float, ...] = (
     0.80, 0.85, 0.90, 0.92, 0.94, 0.96, 0.98,
     1.00,

@@ -8,14 +8,17 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-import pytest
 
 from core.models.loglog_ols import (
     ELASTICITY_SUSPECT_THRESHOLD as LOGLOG_THRESHOLD,
+)
+from core.models.loglog_ols import (
     fit_loglog,
 )
 from core.models.semilog_ols import (
     ELASTICITY_SUSPECT_THRESHOLD as SEMILOG_THRESHOLD,
+)
+from core.models.semilog_ols import (
     fit_semilog,
 )
 

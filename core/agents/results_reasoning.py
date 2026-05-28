@@ -21,7 +21,6 @@ from typing import Any
 from core.agents.base import Agent
 from core.orchestrator.state import AgentResult, ArtifactRef, RunState
 
-
 SYSTEM_PROMPT = """You are the modelling-results reviewer. You receive the
 modelling_results.json blob: every candidate model fitted per PPG plus the
 winner and its hold-out WAPE. For each PPG, return one sentence (<=140

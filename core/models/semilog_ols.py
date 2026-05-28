@@ -21,7 +21,6 @@ from core.models.base import ElasticityFit
 from core.models.metrics import wape_units
 from core.models.shap_attribution import ols_shap_summary
 
-
 TARGET = "log_units"
 LOG_PRICE = "log_price"
 PRICE = "price"
@@ -77,7 +76,7 @@ def fit_semilog(
     elasticity = beta * p_mean
     elasticity_se = beta_se * p_mean
 
-    coefs = dict(zip(["const", *cols], (float(v) for v in model.params)))
+    coefs = dict(zip(["const", *cols], (float(v) for v in model.params), strict=False))
     p_value = float(model.pvalues[own_idx])
 
     diagnostics: dict = {
@@ -100,7 +99,7 @@ def fit_semilog(
             elasticity = robust_beta * p_mean
             elasticity_se = robust_se * p_mean
             beta = robust_beta
-            coefs = dict(zip(["const", *cols], (float(v) for v in rlm.params)))
+            coefs = dict(zip(["const", *cols], (float(v) for v in rlm.params), strict=False))
             diagnostics["robust_refit"] = "huber_m"
             diagnostics["elasticity_robust"] = elasticity
             diagnostics["beta_price_robust"] = robust_beta

@@ -14,12 +14,9 @@ from core.models.predictor import build_predictor
 from core.optimization.constraints import OptimizationConstraints, PPGOptInputs
 from core.optimization.milp import solve_milp
 from core.optimization.predict import (
-    cell_metrics_via_predictor,
     predict_units_via_predictor,
 )
 from core.simulation.grid import (
-    DEFAULT_PRICE_MULTIPLIERS,
-    DEFAULT_PROMO_STATES,
     ScenarioGridSpec,
     simulate_predictor_grid,
 )

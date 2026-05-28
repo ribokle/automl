@@ -98,8 +98,8 @@ def test_aggregate_features_category_week(panel_db: Path) -> None:
 def test_aggregate_features_brand_week(tmp_path: Path) -> None:
     # Seed a fresh warehouse with a brand column populated so the
     # brand-grain SQL has something to group on.
-    import pandas as pd
     import duckdb
+    import pandas as pd
     rows: list[dict] = []
     weeks = pd.date_range("2024-01-01", periods=10, freq="W-MON")
     for store in ("s1", "s2"):
