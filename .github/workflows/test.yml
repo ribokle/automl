@@ -17,7 +17,7 @@ jobs:
           version: "latest"
 
       - name: Install dependencies
-        run: uv sync --dev
+        run: uv sync --extra dev
 
       - name: Lint (ruff)
         run: uv run ruff check .
@@ -39,7 +39,7 @@ jobs:
       # "registered but unavailable" to a real fit — exercising both sides of
       # the graceful-dependency contract that the default job cannot.
       - name: Install with model extras
-        run: uv sync --dev --extra models-trees
+        run: uv sync --extra dev --extra models-trees
 
       - name: Optional-extra model tests
         run: >
@@ -59,7 +59,7 @@ jobs:
           version: "latest"
 
       - name: Install with econometric extra
-        run: uv sync --dev --extra models-econometric
+        run: uv sync --extra dev --extra models-econometric
 
       - name: Panel + IV model tests
         run: >
@@ -81,7 +81,7 @@ jobs:
 
       - name: Install deps + CPU torch
         run: |
-          uv sync --dev
+          uv sync --extra dev
           uv pip install torch --index-url https://download.pytorch.org/whl/cpu
 
       - name: Deep sequence-model tests
