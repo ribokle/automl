@@ -22,6 +22,9 @@ jobs:
       - name: Lint (ruff)
         run: uv run ruff check .
 
+      - name: Seed synthetic panel
+        run: uv run automl seed
+
       - name: Unit tests
         run: uv run --with pytest pytest tests/unit/ -q -m "not slow" --tb=short
 
