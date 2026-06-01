@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import asyncio
 from collections import defaultdict
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from core.orchestrator.state import append_event
@@ -23,7 +23,7 @@ class EventBus:
             self._queues[run_id].remove(q)
 
     async def publish(self, run_id: str, run_dir: str | None, event: dict[str, Any]) -> None:
-        event = {"ts": datetime.utcnow().isoformat(), "run_id": run_id, **event}
+        event = {"ts": datetime.now(UTC).isoformat(), "run_id": run_id, **event}
         if run_dir:
             from pathlib import Path
 

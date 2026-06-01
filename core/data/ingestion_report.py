@@ -6,7 +6,7 @@ sources coherently.
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Literal
 
@@ -30,7 +30,7 @@ class CheckResult(BaseModel):
 
 
 class IngestionReport(BaseModel):
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     duckdb_path: str
     table: str
     row_count: int

@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -101,7 +101,7 @@ def _build_payload(
 
     payload: dict[str, Any] = {
         "run_id": run.id,
-        "generated_at": datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC"),
+        "generated_at": datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC"),
         "objective": constraints.get("objective", "revenue"),
         "headline": headline,
         "kpis": {

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import shutil
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -23,13 +24,21 @@ def _is_archived(state: RunState) -> bool:
     return bool(state.options.get("archived", False))
 
 
+def _utc_iso(dt: datetime) -> str:
+    # Legacy state.json files stored naive UTC; coerce on the way out so the
+    # browser doesn't misread them as local time.
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=UTC)
+    return dt.isoformat()
+
+
 def _summary(state: RunState) -> RunSummary:
     return RunSummary(
         id=state.id,
         status=state.status.value,
         data_path=state.data_path,
         run_dir=state.run_dir,
-        created_at=state.created_at.isoformat(),
+        created_at=_utc_iso(state.created_at),
         archived=_is_archived(state),
     )
 

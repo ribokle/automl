@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -74,7 +74,7 @@ class Agent:
                 "tokens_out": resp.tokens_out,
                 "cost_usd": resp.cost_usd,
                 "dry_run": bool(resp.raw.get("dry_run", False)),
-                "ts": datetime.utcnow().isoformat(),
+                "ts": datetime.now(UTC).isoformat(),
             }
         )
         return resp
@@ -98,7 +98,7 @@ class Agent:
         self._llm_calls = []
         result = run.agents[self.name]
         result.status = AgentStatus.running
-        result.started_at = datetime.utcnow()
+        result.started_at = datetime.now(UTC)
         # Record the configured provider up-front so agents that never call
         # the LLM still report a sensible value in the cost rollup.
         if not result.provider:
@@ -109,11 +109,11 @@ class Agent:
         except Exception as exc:  # noqa: BLE001
             result.status = AgentStatus.failed
             result.error = str(exc)
-            result.finished_at = datetime.utcnow()
+            result.finished_at = datetime.now(UTC)
             self._write_llm_trace(run, result)
             await self.emit(run, "agent_failed", {"error": str(exc)})
             raise
-        result.finished_at = datetime.utcnow()
+        result.finished_at = datetime.now(UTC)
         if result.status == AgentStatus.running:
             result.status = AgentStatus.done
         self._write_llm_trace(run, result)

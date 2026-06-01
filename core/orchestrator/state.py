@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
@@ -49,7 +49,7 @@ class ArtifactRef(BaseModel):
     mime: str = "application/octet-stream"
     agent: str
     name: str
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class ToolCall(BaseModel):
@@ -86,7 +86,7 @@ class RunStatus(StrEnum):
 
 class RunState(BaseModel):
     id: str = Field(default_factory=lambda: uuid.uuid4().hex[:12])
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     status: RunStatus = RunStatus.pending
     data_path: str
     duckdb_path: str
